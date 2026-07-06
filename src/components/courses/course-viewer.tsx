@@ -18,6 +18,7 @@ import { courseService } from '@/services/api/course.api';
 import toast from 'react-hot-toast';
 import { CourseRenderer, extractHeadings } from './CourseRenderer';
 import { TableOfContents } from './TableOfContents';
+import { ProblemTracker } from './problem-tracker/ProblemTracker';
 
 // ─── Reading progress bar ─────────────────────────────────────────────────────
 
@@ -58,6 +59,9 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
     const [sections, setSections] = useState<any[]>([]);
     const [isCompleting, setIsCompleting] = useState(false);
     const [loading, setLoading] = useState(true);
+    // Problem-solving courses are rendered by a dedicated tracker, not the
+    // section-based reader below.
+    const [isProblemCourse, setIsProblemCourse] = useState(false);
     const [courseData, setCourseData] = useState<any>(null);
     const [actualProgress, setActualProgress] = useState(0);
     const [leftOpen, setLeftOpen] = useState(true);
@@ -81,6 +85,13 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                 };
                 setCourseData(normalizedData);
 
+                // Hand problem-solving courses off to the dedicated tracker.
+                if (normalizedData.templateType === 'problem-solving') {
+                    setIsProblemCourse(true);
+                    setLoading(false);
+                    return;
+                }
+
                 let progressData: any[] = [];
                 try {
                     progressData = await progressService.getStudentProgress(user.id, courseId);
@@ -97,7 +108,6 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                     title: section.title,
                     content: section.content || '',
                     videoUrl: section.videoUrl || section.video_url,
-                    imageUrl: section.imageUrl || section.image_url,
                     youtube_videos: section.youtube_videos || section.youtubeVideos || [],
                     assignments: section.assignments || [],
                     resources: section.resources || [],
@@ -170,6 +180,9 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
     };
 
     if (authLoading || loading) return <LoadingState />;
+
+    // Problem-solving template → interactive tracker.
+    if (isProblemCourse) return <ProblemTracker courseId={courseId} />;
 
     if (!courseData || !selectedSection) {
         return (

@@ -121,11 +121,12 @@ export const courseService = {
                 description: sectionData.description || sectionData.title,
                 content: sectionData.content || '',
                 video_url: sectionData.video_url || sectionData.videoUrl,
-                image_url: sectionData.image_url || sectionData.imageUrl,
                 youtube_videos: sectionData.youtube_videos || sectionData.youtubeVideos || [],
                 assignments: sectionData.assignments || [],
                 resources: sectionData.resources || [],
-                duration: sectionData.duration || 0
+                duration: sectionData.duration || 0,
+                // Structured mirror of embedded images/headings/paragraphs, if parsed.
+                content_blocks: sectionData.content_blocks || sectionData.contentBlocks || undefined
             };
 
             const response = await api.post(`/courses/${courseId}/sections`, payload);

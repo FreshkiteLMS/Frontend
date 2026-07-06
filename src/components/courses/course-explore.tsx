@@ -81,6 +81,16 @@ export function CourseExplore() {
         );
     }
 
+    // Students only see published (active) courses; admins see everything so they
+    // can manage drafts. Groups with no visible courses are hidden for students.
+    const isCourseVisible = (ce: CourseGroup['courses'][number]) =>
+        typeof ce.courseId === 'object' && ce.courseId !== null &&
+        (isAdmin || (ce.courseId as unknown as Course).status === 'active');
+
+    const visibleGroups = groups
+        .map(g => ({ ...g, courses: g.courses.filter(isCourseVisible) }))
+        .filter(g => isAdmin || g.courses.length > 0);
+
     return (
         <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-7xl mx-auto">
@@ -93,7 +103,7 @@ export function CourseExplore() {
                     </p>
                 </header>
 
-                {groups.length === 0 ? (
+                {visibleGroups.length === 0 ? (
                     <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
                         <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-gray-900">No courses available yet</h3>
@@ -101,7 +111,7 @@ export function CourseExplore() {
                     </div>
                 ) : (
                     <div className="space-y-16">
-                        {groups.map((group) => (
+                        {visibleGroups.map((group) => (
                             <section key={group._id} className="scroll-mt-20">
                                 <div className="flex items-center gap-4 mb-8">
                                     <h2 className="text-2xl font-bold text-gray-900 whitespace-nowrap">

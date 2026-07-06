@@ -2,11 +2,13 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Video, FileText, Image as ImageIcon, Type, Save, Eye, Trash2 } from 'lucide-react';
+import { ArrowLeft, Video, FileText, Type, Save, Eye, Trash2, Table2, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { courseService } from '@/services/api/course.api';
 import { courseGroupService } from '@/services/api/courseGroupService';
+import { problemCourseService } from '@/services/api/problem-course.api';
+import type { PreviewResult } from '@/types/problem-course';
 
 const templates = [
     {
@@ -19,16 +21,9 @@ const templates = [
     {
         id: 'text-video',
         name: 'Text and Video',
-        description: 'Combination of text content and video lectures',
+        description: 'Text content with video lectures — supports images embedded directly in the source document',
         icon: FileText,
         color: 'bg-blue-100 text-blue-600'
-    },
-    {
-        id: 'text-image',
-        name: 'Text and Image',
-        description: 'Text content with supporting images',
-        icon: ImageIcon,
-        color: 'bg-green-100 text-green-600'
     },
     {
         id: 'text-only',
@@ -36,6 +31,13 @@ const templates = [
         description: 'Pure text-based learning content',
         icon: Type,
         color: 'bg-purple-100 text-purple-600'
+    },
+    {
+        id: 'problem-solving',
+        name: 'Problem Solving Template',
+        description: 'Auto-build an interactive DSA tracker from a Google Sheet',
+        icon: Table2,
+        color: 'bg-indigo-100 text-indigo-600'
     }
 ];
 
@@ -70,6 +72,10 @@ export function CourseCreation() {
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
     const [docLink, setDocLink] = useState('');
+    // Problem-solving template: Google Sheet URL + parsed preview results.
+    const [sheetUrl, setSheetUrl] = useState('');
+    const [sheetPreview, setSheetPreview] = useState<PreviewResult | null>(null);
+    const [processingSheet, setProcessingSheet] = useState(false);
     const [groups, setGroups] = useState<any[]>([]);
     // Server-side section IDs that were replaced by a new doc process — must be
     // deleted from the server before the new sections are saved.
@@ -93,6 +99,27 @@ export function CourseCreation() {
                         thumbnail_url: course.thumbnail_url || ''
                     });
                     setSelectedTemplate(course.template_type || null);
+
+                    // Problem-solving: prefill the sheet URL + show the already-parsed
+                    // results so the Content step has data without re-processing.
+                    if (course.template_type === 'problem-solving') {
+                        setSheetUrl(course.problem_sheet?.url || '');
+                        const secs = (course.problem_sections || []) as Array<{ title: string; icon: string; problems?: unknown[] }>;
+                        setSheetPreview({
+                            spreadsheetId: course.problem_sheet?.spreadsheet_id || '',
+                            warnings: course.problem_sheet?.last_warnings || [],
+                            stats: {
+                                sectionCount: secs.length,
+                                problemCount: secs.reduce((n, s) => n + (s.problems?.length || 0), 0),
+                                duplicatesSkipped: 0,
+                                sectionsMerged: 0,
+                                invalidUrlsSkipped: 0,
+                                difficultyDefaulted: 0,
+                            },
+                            sections: secs.map(s => ({ title: s.title, icon: s.icon, problemCount: s.problems?.length || 0 })),
+                        });
+                    }
+
                     if (course.sections && course.sections.length > 0) {
                         setSections(course.sections.map((s: any, idx: number) => ({
                             id: idx + 1,
@@ -100,14 +127,13 @@ export function CourseCreation() {
                             title: s.title,
                             content: s.content,
                             videoUrl: s.video_url,
-                            imageUrl: s.image_url,
                             youtube_videos: s.youtube_videos || [],
                             assignments: s.assignments || [],
                             resources: s.resources || [],
                             persisted: true // already saved on the server — don't re-add on save
                         })));
                     } else {
-                        setSections([{ id: 1, title: '', content: '', videoUrl: '', imageUrl: '', youtube_videos: [], assignments: [], resources: [], persisted: false }]);
+                        setSections([{ id: 1, title: '', content: '', videoUrl: '', youtube_videos: [], assignments: [], resources: [], persisted: false }]);
                     }
                     setCreatedCourseId(editId);
                     setStep('details'); // Start directly at details if editing
@@ -134,14 +160,77 @@ export function CourseCreation() {
 
     const handleTemplateSelect = (templateId: string) => {
         setSelectedTemplate(templateId);
+        // Problem-solving courses live in the "problem_solving" category; default
+        // it so the (shared) details form is pre-filled sensibly.
+        if (templateId === 'problem-solving') {
+            setCourseData(prev => ({ ...prev, category: 'problem_solving' }));
+        }
         setStep('details');
+    };
+
+    /**
+     * Problem-solving template: parse the Google Sheet and show the results
+     * (sections + problem counts) WITHOUT creating the course yet — mirrors the
+     * "Process Document" preview used by the other templates.
+     */
+    const handleProcessSheet = async () => {
+        if (!sheetUrl) return;
+        try {
+            setProcessingSheet(true);
+            const preview = await problemCourseService.preview(sheetUrl);
+            setSheetPreview(preview);
+            toast.success(`Found ${preview.stats.problemCount} problems across ${preview.stats.sectionCount} sections`);
+        } catch (err: any) {
+            setSheetPreview(null);
+            toast.error(
+                err?.response?.data?.error?.message ||
+                    err?.message ||
+                    'Failed to process sheet. Make sure it is shared for viewing.'
+            );
+        } finally {
+            setProcessingSheet(false);
+        }
+    };
+
+    /**
+     * Save a problem-solving course. In EDIT mode (createdCourseId present) this
+     * updates the existing course's metadata and re-reads the sheet — it never
+     * creates a duplicate. Otherwise it imports a brand-new course.
+     */
+    const saveProblemCourse = async (): Promise<string | null> => {
+        if (createdCourseId) {
+            await courseService.update(createdCourseId, {
+                title: courseData.title,
+                description: courseData.description,
+                category: 'problem_solving',
+                group: courseData.groupId || undefined,
+                difficulty: courseData.difficulty,
+                price: Number(courseData.price) || 0,
+                thumbnail_url: courseData.thumbnail_url,
+            });
+            // Re-read the (possibly changed) sheet; preserves student progress.
+            await problemCourseService.sync(createdCourseId, sheetUrl || undefined);
+            return createdCourseId;
+        }
+
+        const res = await problemCourseService.import({
+            title: courseData.title,
+            description: courseData.description,
+            coverImage: courseData.thumbnail_url || undefined,
+            sheetUrl,
+            price: Number(courseData.price) || 0,
+            difficulty: courseData.difficulty as any,
+            group: courseData.groupId || undefined,
+            publish: false,
+        });
+        return res.course.id || res.course._id || null;
     };
 
     const handleDetailsSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setStep('content');
         // Only seed an empty section if none exist yet (preserve doc-parsed/edited sections)
-        setSections(prev => prev.length > 0 ? prev : [{ id: 1, title: '', content: '', videoUrl: '', imageUrl: '', youtube_videos: [], assignments: [], resources: [], persisted: false }]);
+        setSections(prev => prev.length > 0 ? prev : [{ id: 1, title: '', content: '', videoUrl: '', youtube_videos: [], assignments: [], resources: [], persisted: false }]);
     };
 
     const addSection = () => {
@@ -150,7 +239,6 @@ export function CourseCreation() {
             title: '',
             content: '',
             videoUrl: '',
-            imageUrl: '',
             youtube_videos: [],
             assignments: [],
             resources: [],
@@ -211,16 +299,19 @@ export function CourseCreation() {
                 setRemovedServerIds(prev => [...prev, ...replacedIds]);
             }
 
-            // Map parsed sections into editor state (all new → persisted: false)
+            // Map parsed sections into editor state (all new → persisted: false).
+            // Embedded images are already inline in `content` (uploaded to R2 and
+            // positioned exactly where they appeared in the doc) — nothing extra
+            // to wire up here; content_blocks is carried through for the API.
             const mapped = parsed.sections.map((s, idx) => ({
                 id: idx + 1,
                 title: s.title,
                 content: s.content || '',
                 videoUrl: '',
-                imageUrl: s.images?.[0] || '',
                 youtube_videos: s.youtubeVideos || [],
                 assignments: s.assignments || [],
                 resources: s.resources || [],
+                content_blocks: s.contentBlocks || [],
                 persisted: false
             }));
             setSections(mapped);
@@ -235,7 +326,14 @@ export function CourseCreation() {
 
             const videoCount = mapped.reduce((n, s) => n + s.youtube_videos.length, 0);
             const assignmentCount = mapped.reduce((n, s) => n + s.assignments.length, 0);
-            toast.success(`Imported ${mapped.length} sections, ${videoCount} videos, ${assignmentCount} assignments`);
+            const imageCount = mapped.reduce(
+                (n, s) => n + s.content_blocks.filter((b: any) => b.type === 'image').length, 0
+            );
+            toast.success(`Imported ${mapped.length} sections, ${videoCount} videos, ${imageCount} images, ${assignmentCount} assignments`);
+
+            if (parsed.warnings && parsed.warnings.length > 0) {
+                toast.error(`${parsed.warnings.length} warning${parsed.warnings.length === 1 ? '' : 's'}: ${parsed.warnings[0]}`);
+            }
         } catch (err) {
             console.error(err);
             toast.error('Failed to process document. Make sure it is a shared Google Doc.');
@@ -299,10 +397,11 @@ export function CourseCreation() {
         // server's validation. Bare headings (common in large parsed docs) have
         // no body and would be rejected with a 400, so we skip them here rather
         // than let one empty section abort the whole save.
+        // Embedded images live inline within `content` (as markdown image tags),
+        // so a section with only images still passes the content check below.
         const hasBody = (s: any): boolean =>
             !!(s.content?.trim()) ||
             !!(s.videoUrl?.trim()) ||
-            !!(s.imageUrl?.trim()) ||
             (s.youtube_videos?.length || 0) > 0 ||
             (s.assignments?.length || 0) > 0 ||
             (s.resources?.length || 0) > 0;
@@ -322,10 +421,10 @@ export function CourseCreation() {
                     duration: 0,
                     content: section.content || '',
                     videoUrl: section.videoUrl || '',
-                    imageUrl: section.imageUrl || '',
                     youtube_videos: section.youtube_videos || [],
                     assignments: section.assignments || [],
-                    resources: section.resources || []
+                    resources: section.resources || [],
+                    content_blocks: section.content_blocks || undefined
                 });
                 persistedIds.add(section.id);
             } catch (err: any) {
@@ -351,15 +450,22 @@ export function CourseCreation() {
         return courseId;
     };
 
+    const isProblemSolving = selectedTemplate === 'problem-solving';
+
     const handleSaveDraft = async () => {
         try {
             setIsSaving(true);
-            await saveCourse();
-            toast.success('Course saved as draft');
+            if (isProblemSolving) {
+                await saveProblemCourse();
+                toast.success(createdCourseId ? 'Problem-solving course updated' : 'Problem-solving course saved as draft');
+            } else {
+                await saveCourse();
+                toast.success('Course saved as draft');
+            }
             router.push('/admin');
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to save course:', error);
-            toast.error('Failed to save course. Please try again.');
+            toast.error(error?.response?.data?.error?.message || error?.message || 'Failed to save course. Please try again.');
         } finally {
             setIsSaving(false);
         }
@@ -368,13 +474,13 @@ export function CourseCreation() {
     const handleSaveAndPreview = async () => {
         try {
             setIsSaving(true);
-            const courseId = await saveCourse();
+            const courseId = isProblemSolving ? await saveProblemCourse() : await saveCourse();
             if (courseId) {
                 router.push(`/admin/courses/${courseId}/preview`);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to save course:', error);
-            toast.error('Failed to save course. Please try again.');
+            toast.error(error?.response?.data?.error?.message || error?.message || 'Failed to save course. Please try again.');
         } finally {
             setIsSaving(false);
         }
@@ -570,6 +676,91 @@ export function CourseCreation() {
             {/* Step 3: Content Creation */}
             {step === 'content' && (
                 <div>
+                    {isProblemSolving ? (
+                    /* Problem-solving: process a Google Sheet and preview the results */
+                    <div className="mb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Import from Google Sheet</h3>
+
+                        <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl p-6">
+                            <div className="flex items-start gap-4">
+                                <Table2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-1" />
+                                <div className="flex-1">
+                                    <h4 className="text-gray-900 dark:text-white font-medium mb-2">Process a Google Sheet</h4>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
+                                        Paste your Google Sheet link. We detect section headings and parse the problems
+                                        beneath them into a DSA tracker. Your title, description, price and cover stay
+                                        exactly as you entered them.
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                            placeholder="https://docs.google.com/spreadsheets/d/..."
+                                            value={sheetUrl}
+                                            onChange={(e) => { setSheetUrl(e.target.value); setSheetPreview(null); }}
+                                        />
+                                        <button
+                                            onClick={handleProcessSheet}
+                                            disabled={processingSheet || !sheetUrl}
+                                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
+                                        >
+                                            {processingSheet ? 'Processing...' : 'Process Sheet'}
+                                        </button>
+                                    </div>
+                                    <div className="mt-3 flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                                        <span>
+                                            The sheet must be viewable — set link sharing to{' '}
+                                            <strong>Anyone with the link → Viewer</strong>, or share it with the service account.
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Parsed results */}
+                        {sheetPreview && (
+                            <div className="mt-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h4 className="font-semibold text-gray-900 dark:text-white">Parsed Results</h4>
+                                    <div className="flex gap-2">
+                                        <span className="px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs font-semibold">
+                                            {sheetPreview.stats.sectionCount} sections
+                                        </span>
+                                        <span className="px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-semibold">
+                                            {sheetPreview.stats.problemCount} problems
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto">
+                                    {sheetPreview.sections.map((s, i) => (
+                                        <div key={i} className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-gray-50 dark:bg-gray-700/40">
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{s.title}</span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0 ml-2">{s.problemCount}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                {sheetPreview.warnings.length > 0 && (
+                                    <div className="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3.5">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                            <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                                                {sheetPreview.warnings.length} warning{sheetPreview.warnings.length === 1 ? '' : 's'}
+                                            </span>
+                                        </div>
+                                        <ul className="list-disc list-inside space-y-1 text-xs text-amber-700 dark:text-amber-300/90 max-h-32 overflow-y-auto">
+                                            {sheetPreview.warnings.slice(0, 15).map((w, i) => <li key={i}>{w}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+                                <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                                    Looks good? Click <strong>Save &amp; Continue to Preview</strong> below to create the course, then Publish.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                    ) : (
+                    <>
                     <div className="mb-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Course Content</h3>
 
@@ -580,7 +771,8 @@ export function CourseCreation() {
                                 <div className="flex-1">
                                     <h4 className="text-gray-900 dark:text-white font-medium mb-2">Import from Google Doc</h4>
                                     <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
-                                        Paste a Google Doc link. We extract sections, content, YouTube videos, assignments, and images into the editor below.
+                                        Paste a Google Doc link. We extract sections, content, YouTube videos, and assignments into the editor below.
+                                        Images pasted directly into the document are uploaded automatically and appear inline at the exact position you placed them.
                                         Your course title, description, price and other details stay exactly as you entered them.
                                     </p>
                                     <div className="flex gap-2">
@@ -682,18 +874,6 @@ export function CourseCreation() {
                                         </div>
                                     )}
 
-                                    {selectedTemplate === 'text-image' && (
-                                        <div>
-                                            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Image URL</label>
-                                            <input
-                                                type="url"
-                                                value={section.imageUrl}
-                                                onChange={(e) => updateSection(section.id, 'imageUrl', e.target.value)}
-                                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                                placeholder="https://..."
-                                            />
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         ))}
@@ -705,6 +885,8 @@ export function CourseCreation() {
                             + Add Section
                         </button>
                     </div>
+                    </>
+                    )}
 
                     {/* Action Buttons */}
                     <div className="mt-8 flex gap-4">
@@ -716,7 +898,7 @@ export function CourseCreation() {
                         </button>
                         <button
                             onClick={handleSaveDraft}
-                            disabled={isSaving}
+                            disabled={isSaving || (isProblemSolving && !sheetPreview)}
                             className="flex items-center gap-2 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <Save className="w-5 h-5" />
@@ -724,7 +906,7 @@ export function CourseCreation() {
                         </button>
                         <button
                             onClick={handleSaveAndPreview}
-                            disabled={isSaving}
+                            disabled={isSaving || (isProblemSolving && !sheetPreview)}
                             className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg flex-1 justify-center transition-colors disabled:cursor-not-allowed"
                         >
                             <Eye className="w-5 h-5" />

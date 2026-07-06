@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import { courseService } from '@/services/api/course.api';
 import { normalizeSection, CourseRenderer } from './CourseRenderer';
+import { ProblemCourseManagePanel } from './problem-course-manage';
 
 interface CoursePreviewProps {
     courseId: string;
@@ -122,6 +123,9 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
     }
 
     const sections = course.sections || [];
+    const isProblemSolving = course.template_type === 'problem-solving';
+    const problemSections = course.problem_sections || [];
+    const totalProblems = problemSections.reduce((n: number, s: any) => n + (s.problems?.length || 0), 0);
     const categoryLabel = (course.category || '').replace(/_/g, ' ');
     const tags: string[] = course.tags || [];
     const isPublished = course.status === 'active';
@@ -275,21 +279,42 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
 
                         <div className="flex items-center gap-6 flex-wrap">
                             <div className="text-2xl font-black text-gray-900 dark:text-white">{formatCurrency(course.price)}</div>
-                            <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-                                <BookOpen className="w-4 h-4" /> {totalLessons} {totalLessons === 1 ? 'section' : 'sections'}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-                                <PlayCircle className="w-4 h-4" /> {totalVideos} {totalVideos === 1 ? 'video' : 'videos'}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-                                <CheckSquare className="w-4 h-4" /> {totalAssignments} {totalAssignments === 1 ? 'assignment' : 'assignments'}
-                            </div>
+                            {isProblemSolving ? (
+                                <>
+                                    <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                                        <BookOpen className="w-4 h-4" /> {problemSections.length} {problemSections.length === 1 ? 'section' : 'sections'}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                                        <CheckSquare className="w-4 h-4" /> {totalProblems} {totalProblems === 1 ? 'problem' : 'problems'}
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                                        <BookOpen className="w-4 h-4" /> {totalLessons} {totalLessons === 1 ? 'section' : 'sections'}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                                        <PlayCircle className="w-4 h-4" /> {totalVideos} {totalVideos === 1 ? 'video' : 'videos'}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                                        <CheckSquare className="w-4 h-4" /> {totalAssignments} {totalAssignments === 1 ? 'assignment' : 'assignments'}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* ───────── Content (rendered with the SHARED CourseRenderer) ───────── */}
+            {/* ───────── Content ───────── */}
+            {isProblemSolving ? (
+                <ProblemCourseManagePanel
+                    courseId={course.id || course._id}
+                    sheetUrl={course.problem_sheet?.url}
+                    lastSyncedAt={course.problem_sheet?.last_synced_at}
+                    initialSections={problemSections}
+                />
+            ) : (
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-1">
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 sticky top-4">
@@ -350,6 +375,7 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                     </div>
                 </div>
             </div>
+            )}
 
             {isPublished ? (
                 <div className="mt-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">

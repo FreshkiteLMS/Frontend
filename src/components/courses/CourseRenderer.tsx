@@ -20,7 +20,6 @@ export interface NormalizedSection {
     id: string;
     title: string;
     content: string;
-    imageUrl?: string;
     videos: string[];
     assignments: string[];
     resources: string[];
@@ -64,7 +63,6 @@ export function normalizeSection(raw: any): NormalizedSection {
         id: raw.id,
         title: raw.title,
         content: raw.content || "",
-        imageUrl: raw.image_url || raw.imageUrl,
         videos,
         assignments: raw.assignments || [],
         resources: raw.resources || [],
@@ -360,23 +358,46 @@ const calloutStyles = {
 };
 
 // ─── Image block ─────────────────────────────────────────────────────────────
+// Renders an embedded-image content block. Responsive (max-width, scales down
+// on small viewports), lazy-loaded, rounded corners, and preserves aspect
+// ratio via the image's own intrinsic dimensions (no layout shift once
+// loaded). Shows a skeleton placeholder while loading and a graceful fallback
+// if the image 404s or the R2 URL becomes unreachable.
 
 const ImageBlock = memo(function ImageBlock({ src, alt }: { src: string; alt: string }) {
     const [expanded, setExpanded] = useState(false);
+    const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
+
     return (
         <>
             <figure className="my-8">
-                <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 shadow-sm">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                        src={src}
-                        alt={alt}
-                        loading="lazy"
-                        onClick={() => setExpanded(true)}
-                        className="w-full h-auto max-h-[480px] object-contain cursor-zoom-in hover:opacity-95 transition-opacity"
-                    />
+                <div className="relative overflow-hidden rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 shadow-sm">
+                    {status === "loading" && (
+                        <div className="absolute inset-0 animate-pulse bg-gray-100 dark:bg-gray-800" aria-hidden="true" />
+                    )}
+
+                    {status === "error" ? (
+                        <div className="flex flex-col items-center justify-center gap-2 py-16 text-gray-400 dark:text-gray-600">
+                            <AlertCircle className="w-8 h-8" />
+                            <p className="text-sm">Image failed to load</p>
+                        </div>
+                    ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={src}
+                            alt={alt}
+                            loading="lazy"
+                            decoding="async"
+                            onClick={() => status === "loaded" && setExpanded(true)}
+                            onLoad={() => setStatus("loaded")}
+                            onError={() => setStatus("error")}
+                            className={`w-full h-auto max-h-[480px] object-contain transition-opacity duration-300 ${
+                                status === "loaded" ? "opacity-100 cursor-zoom-in hover:opacity-95" : "opacity-0"
+                            }`}
+                        />
+                    )}
                 </div>
-                {alt && alt !== "Course image" && (
+                {alt && alt !== "Course image" && alt !== "Embedded image" && (
                     <figcaption className="mt-2.5 text-center text-sm text-gray-500 dark:text-gray-400 italic">
                         {alt}
                     </figcaption>
@@ -668,8 +689,9 @@ export function CourseRenderer({ section }: { section: any }) {
     return (
         <div>
             <VideoSection videos={s.videos} />
+            {/* Embedded images render inline, at their exact document position,
+                as part of the block-based CourseContent parse below. */}
             <CourseContent content={s.content} />
-            {s.imageUrl && <ImageBlock src={s.imageUrl} alt={s.title} />}
             <AssignmentSection assignments={s.assignments} />
             <ResourceSection resources={s.resources} />
         </div>
