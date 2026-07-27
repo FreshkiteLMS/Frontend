@@ -334,9 +334,13 @@ export function CourseCreation() {
             if (parsed.warnings && parsed.warnings.length > 0) {
                 toast.error(`${parsed.warnings.length} warning${parsed.warnings.length === 1 ? '' : 's'}: ${parsed.warnings[0]}`);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            toast.error('Failed to process document. Make sure it is a shared Google Doc.');
+            // Prefer the server's specific reason (e.g. server not configured,
+            // non-native Google Doc) over the generic sharing hint, which is only
+            // the right guidance when Google actually denied access.
+            const serverMessage = err?.response?.data?.message;
+            toast.error(serverMessage || 'Failed to process document. Make sure it is a shared Google Doc.');
         } finally {
             setIsSaving(false);
         }

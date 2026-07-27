@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/components/layout/theme-provider';
 import { useState, useEffect } from 'react';
-import { Sun, Moon, Settings, LogOut, User as UserIcon, Bell } from 'lucide-react';
+import { Sun, Moon, Settings, LogOut, User as UserIcon, Bell, MessageCircle } from 'lucide-react';
 import { notificationService, Notification } from '@/services/api/notification.api';
 import { NotificationSidebar } from '@/components/layout/notification-sidebar';
 import { getSocket, joinUserRoom } from '@/services/socket';
+import { useChatBadge } from '@/hooks/use-chat-socket';
 import toast from 'react-hot-toast';
 
 export function Header() {
@@ -42,10 +43,13 @@ export function Header() {
                                 <Link href="/admin/students" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Students</Link>
                                 <Link href="/admin/batches" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Batches</Link>
                                 <Link href="/admin/enrollment-requests" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Requests</Link>
+                                <Link href="/chat" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Chat</Link>
                             </>
                         ) : displayUser?.role === 'student' ? (
                             <>
                                 <Link href="/student/meetings" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Meetings</Link>
+                                <Link href="/chat" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Chat</Link>
+                                <Link href="/friends" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Friends</Link>
                             </>
                         ) : (
                             <Link href="/courses" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Categories</Link>
@@ -58,6 +62,7 @@ export function Header() {
                     <ThemeToggle />
                     {displayUser ? (
                         <>
+                            <ChatButton />
                             <NotificationBell />
                             <ProfileDropdown user={displayUser} logout={logout} />
                         </>
@@ -174,6 +179,27 @@ function ProfileDropdown({ user, logout }: { user: { name?: string; role?: strin
                 </div>
             )}
         </div>
+    );
+}
+
+function ChatButton() {
+    // Only ever rendered inside the `displayUser` branch (mounted && authenticated),
+    // so the badge cannot desync during hydration.
+    const unread = useChatBadge();
+
+    return (
+        <Link
+            href="/chat"
+            className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
+            aria-label="Open chat"
+        >
+            <MessageCircle className="w-5 h-5" />
+            {unread > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 text-[10px] bg-blue-600 text-white rounded-full flex items-center justify-center px-0.5 font-black">
+                    {unread > 99 ? '99+' : unread}
+                </span>
+            )}
+        </Link>
     );
 }
 
