@@ -58,6 +58,13 @@ export interface Course {
     group?: { _id: string; name: string } | string;
     template_type?: string;
     sections?: CourseSection[];
+    /**
+     * Original source document the course was processed from. Shown to students
+     * as an external "Open Document" link next to the processed notes — never
+     * re-processed. Null/absent for courses with no source document, including
+     * every course created before this field existed.
+     */
+    document_url?: string | null;
     // Problem-solving template only (present when template_type === 'problem-solving').
     problem_sections?: Array<{ id: string; title: string; icon: string; problems: unknown[] }>;
     problem_sheet?: { url: string; spreadsheet_id: string; last_synced_at?: string; last_warnings?: string[] };
@@ -76,4 +83,10 @@ export interface CourseGroup {
     image_url?: string;
     status: 'active' | 'inactive';
     courses: CourseEntry[];
+    /**
+     * Reference document for the bundle (syllabus, roadmap, …). A link only — it
+     * is never parsed or processed into notes. Served to admins and to enrolled
+     * students; omitted from the public discovery listing.
+     */
+    document_url?: string | null;
 }

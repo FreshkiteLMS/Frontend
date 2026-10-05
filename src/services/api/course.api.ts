@@ -80,6 +80,9 @@ export const courseService = {
                 template_type: courseData.template_type || courseData.templateType,
                 price: Number(courseData.price),
                 thumbnail_url: courseData.thumbnail_url,
+                // Source document link. Sent as metadata only — the parse step is
+                // the separate POST /docs/parse call the admin triggers explicitly.
+                document_url: courseData.document_url ?? null,
                 status: 'inactive'
             };
 

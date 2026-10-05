@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { courseGroupService } from '@/services/api/courseGroupService';
 import { courseService } from '@/services/api/course.api';
 import { Course } from '@/types/course';
+import { isValidDocumentUrl, normalizeDocumentUrlInput } from '@/lib/document-url';
 
 /* ─────────────────────────── types ─────────────────────────── */
 interface GroupForm {
@@ -14,6 +15,12 @@ interface GroupForm {
     description: string;
     price: string;
     image_url: string;
+    /**
+     * Reference document for the bundle. Stored and shown to enrolled students as
+     * a link — deliberately NOT fed to the individual-course document pipeline, so
+     * nothing here is parsed, extracted, or turned into notes.
+     */
+    document_url: string;
     status: 'active' | 'inactive';
 }
 
@@ -37,7 +44,7 @@ export function CourseGroupCreation() {
     const [createdGroupId, setCreatedGroupId] = useState<string | null>(null);
 
     // Step 1 state
-    const [form, setForm] = useState<GroupForm>({ name: '', description: '', price: '', image_url: '', status: 'active' });
+    const [form, setForm] = useState<GroupForm>({ name: '', description: '', price: '', image_url: '', document_url: '', status: 'active' });
     const [creating, setCreating] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
 
@@ -63,6 +70,9 @@ export function CourseGroupCreation() {
                         description: group.description || '',
                         price: String(group.price),
                         image_url: group.image_url || '',
+                        // Prefill the stored reference link so it can be kept,
+                        // replaced, or cleared. Nothing is processed on load.
+                        document_url: group.document_url || '',
                         status: (group.status as 'active' | 'inactive') || 'active'
                     });
                     setCreatedGroupId(editId);
@@ -105,6 +115,15 @@ export function CourseGroupCreation() {
         e.preventDefault();
         setCreateError(null);
         if (!form.name.trim()) return;
+
+        // Validate before any request. The server re-validates — this is only to
+        // fail fast with a clear message.
+        const documentUrl = normalizeDocumentUrlInput(form.document_url);
+        if (documentUrl !== null && !isValidDocumentUrl(documentUrl)) {
+            setCreateError('Reference document URL must be a valid http(s) link (for example https://example.com/doc.pdf).');
+            return;
+        }
+
         setCreating(true);
         try {
             const payload: any = {
@@ -113,6 +132,10 @@ export function CourseGroupCreation() {
                 ...(form.description && { description: form.description.trim() }),
                 ...(form.price && { price: Number(form.price) }),
                 ...(form.image_url && { image_url: form.image_url.trim() }),
+                // Always sent (unlike the fields above) so clearing the field
+                // actually removes the stored link. Persisted as-is — no parsing,
+                // no extraction, no notes generation for a group document.
+                document_url: documentUrl,
             };
 
             if (editId) {
@@ -183,6 +206,9 @@ export function CourseGroupCreation() {
         c.title.toLowerCase().includes(search.toLowerCase()) ||
         (c.difficulty ?? '').toLowerCase().includes(search.toLowerCase())
     );
+
+    // Empty is valid — a group need not have a reference document.
+    const groupDocUrlInvalid = form.document_url.trim().length > 0 && !isValidDocumentUrl(form.document_url);
 
     const difficultyColor: Record<string, string> = {
         beginner: 'bg-emerald-100 text-emerald-700',
@@ -287,6 +313,36 @@ export function CourseGroupCreation() {
                         </div>
                     </div>
 
+                    {/* Reference document — a link only; never processed */}
+                    <div>
+                        <label htmlFor="group-document-url" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                            Reference Document URL
+                        </label>
+                        <div className="relative">
+                            <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                                id="group-document-url"
+                                type="url"
+                                inputMode="url"
+                                value={form.document_url}
+                                onChange={e => setForm({ ...form, document_url: e.target.value })}
+                                aria-describedby="group-document-url-help"
+                                aria-invalid={groupDocUrlInvalid}
+                                className={`w-full pl-10 pr-4 py-2.5 border rounded-xl text-sm focus:ring-2 focus:border-transparent outline-none transition ${
+                                    groupDocUrlInvalid
+                                        ? 'border-red-300 focus:ring-red-500'
+                                        : 'border-gray-200 focus:ring-indigo-500'
+                                }`}
+                                placeholder="https://example.com/web-development.pdf"
+                            />
+                        </div>
+                        <p id="group-document-url-help" className={`mt-1.5 text-xs ${groupDocUrlInvalid ? 'text-red-600' : 'text-gray-500'}`}>
+                            {groupDocUrlInvalid
+                                ? 'Enter a valid http(s) link, for example https://example.com/doc.pdf'
+                                : 'Optional. Shown to enrolled students as an “Open Document” link. This document is stored as a reference only — it is never processed into course notes. Clear the field to remove it.'}
+                        </p>
+                    </div>
+
                     {/* Status Toggle */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">Visibility</label>
@@ -325,7 +381,7 @@ export function CourseGroupCreation() {
 
                     <button
                         type="submit"
-                        disabled={creating || !form.name.trim()}
+                        disabled={creating || !form.name.trim() || groupDocUrlInvalid}
                         className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-md shadow-indigo-500/20"
                     >
                         {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}

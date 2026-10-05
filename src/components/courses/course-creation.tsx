@@ -9,6 +9,7 @@ import { courseService } from '@/services/api/course.api';
 import { courseGroupService } from '@/services/api/courseGroupService';
 import { problemCourseService } from '@/services/api/problem-course.api';
 import type { PreviewResult } from '@/types/problem-course';
+import { isValidDocumentUrl, normalizeDocumentUrlInput } from '@/lib/document-url';
 
 const templates = [
     {
@@ -71,6 +72,10 @@ export function CourseCreation() {
     const [isSaving, setIsSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
+    // The source document link. This single value does double duty: it is what
+    // "Process Document" parses, AND what gets persisted as the course's
+    // `document_url` so students can open the original. One input, one stored
+    // field — no duplicate URL to keep in sync.
     const [docLink, setDocLink] = useState('');
     // Problem-solving template: Google Sheet URL + parsed preview results.
     const [sheetUrl, setSheetUrl] = useState('');
@@ -99,6 +104,11 @@ export function CourseCreation() {
                         thumbnail_url: course.thumbnail_url || ''
                     });
                     setSelectedTemplate(course.template_type || null);
+
+                    // Prefill the stored source document link so the admin can keep,
+                    // replace, or clear it. Loading it does NOT re-process the
+                    // document — that only happens on "Process Document".
+                    setDocLink(course.document_url || '');
 
                     // Problem-solving: prefill the sheet URL + show the already-parsed
                     // results so the Content step has data without re-processing.
@@ -352,6 +362,14 @@ export function CourseCreation() {
      * duplicates; newly added/parsed sections are inserted and marked persisted.
      */
     const saveCourse = async (): Promise<string | null> => {
+        // The source document link travels with the course metadata. `null` means
+        // the admin left it blank or cleared it, which removes the stored link and
+        // hides the student-facing document card. The server re-validates.
+        const documentUrl = normalizeDocumentUrlInput(docLink);
+        if (documentUrl !== null && !isValidDocumentUrl(documentUrl)) {
+            throw new Error('Document URL must be a valid http(s) link (for example https://example.com/doc.pdf).');
+        }
+
         let courseId = createdCourseId;
         if (!courseId) {
             const newCourse = await courseService.create({
@@ -363,7 +381,8 @@ export function CourseCreation() {
                 estimatedDuration: courseData.duration,
                 templateType: selectedTemplate,
                 price: Number(courseData.price) || 0,
-                thumbnail_url: courseData.thumbnail_url
+                thumbnail_url: courseData.thumbnail_url,
+                document_url: documentUrl
             });
             courseId = newCourse.id || newCourse._id || null;
             setCreatedCourseId(courseId);
@@ -377,7 +396,8 @@ export function CourseCreation() {
                 estimated_duration: Number(courseData.duration),
                 template_type: selectedTemplate,
                 price: Number(courseData.price),
-                thumbnail_url: courseData.thumbnail_url
+                thumbnail_url: courseData.thumbnail_url,
+                document_url: documentUrl
             });
         }
 
@@ -455,6 +475,10 @@ export function CourseCreation() {
     };
 
     const isProblemSolving = selectedTemplate === 'problem-solving';
+
+    // Empty is valid — a course need not have a source document. Only a non-empty
+    // value that isn't a safe http(s) URL is flagged.
+    const docLinkInvalid = docLink.trim().length > 0 && !isValidDocumentUrl(docLink);
 
     const handleSaveDraft = async () => {
         try {
@@ -773,28 +797,44 @@ export function CourseCreation() {
                             <div className="flex items-start gap-4">
                                 <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-1" />
                                 <div className="flex-1">
-                                    <h4 className="text-gray-900 dark:text-white font-medium mb-2">Import from Google Doc</h4>
+                                    <h4 className="text-gray-900 dark:text-white font-medium mb-2">Source Document</h4>
                                     <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
                                         Paste a Google Doc link. We extract sections, content, YouTube videos, and assignments into the editor below.
                                         Images pasted directly into the document are uploaded automatically and appear inline at the exact position you placed them.
                                         Your course title, description, price and other details stay exactly as you entered them.
                                     </p>
-                                    <div className="flex gap-2">
+                                    <label htmlFor="course-document-url" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        Document URL (optional)
+                                    </label>
+                                    <div className="flex flex-col sm:flex-row gap-2">
                                         <input
-                                            type="text"
-                                            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                            id="course-document-url"
+                                            type="url"
+                                            inputMode="url"
+                                            aria-describedby="course-document-url-help"
+                                            aria-invalid={docLinkInvalid}
+                                            className={`flex-1 min-w-0 px-4 py-2 border dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:border-transparent outline-none ${
+                                                docLinkInvalid
+                                                    ? 'border-red-400 focus:ring-red-500 dark:border-red-500'
+                                                    : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
+                                            }`}
                                             placeholder="https://docs.google.com/document/d/..."
                                             value={docLink}
                                             onChange={(e) => setDocLink(e.target.value)}
                                         />
                                         <button
                                             onClick={handleProcessDoc}
-                                            disabled={isSaving || !docLink}
+                                            disabled={isSaving || !docLink.trim() || docLinkInvalid}
                                             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
                                         >
                                             {isSaving ? 'Processing...' : 'Process Document'}
                                         </button>
                                     </div>
+                                    <p id="course-document-url-help" className={`mt-2 text-xs ${docLinkInvalid ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                                        {docLinkInvalid
+                                            ? 'Enter a valid http(s) link, for example https://example.com/document.pdf'
+                                            : 'Saved with the course and shown to students as an “Open Document” link alongside the processed notes. Clear the field to remove it. Saving the link does not re-process the document.'}
+                                    </p>
                                 </div>
                             </div>
                         </div>

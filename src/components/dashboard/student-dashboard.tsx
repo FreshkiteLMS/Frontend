@@ -20,6 +20,7 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import { studentService } from '@/services/api/student.api';
 import { useAuth } from '@/hooks/use-auth';
+import { GroupDocumentLink } from '@/components/courses/GroupDocumentLink';
 
 export function StudentDashboard() {
     const { user, isLoading: authLoading } = useAuth();
@@ -359,6 +360,11 @@ export function StudentDashboard() {
                                                         />
                                                     </div>
                                                 </div>
+
+                                                {/* Bundle reference document — a plain
+                                                    external link, no processing. Absent
+                                                    for bundles without one. */}
+                                                <GroupDocumentLink url={item.document_url} className="mb-3" />
 
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-xs text-gray-500 dark:text-gray-400">

@@ -19,6 +19,8 @@ import toast from 'react-hot-toast';
 import { CourseRenderer, extractHeadings } from './CourseRenderer';
 import { TableOfContents } from './TableOfContents';
 import { ProblemTracker } from './problem-tracker/ProblemTracker';
+import { DocumentResourceCard } from './DocumentResourceCard';
+import { CollapsibleSection } from './CollapsibleSection';
 
 // ─── Reading progress bar ─────────────────────────────────────────────────────
 
@@ -360,8 +362,27 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                             <div className="mt-6 h-px bg-gray-100 dark:bg-gray-800" />
                         </header>
 
-                        {/* Section content */}
-                        <CourseRenderer section={selectedSection} />
+                        {/*
+                            Source material vs. processed material — two different
+                            things, shown as two visibly different affordances:
+                            the original document is a link-out card, the notes are
+                            a collapsible panel. The card renders only when the
+                            course has a usable stored URL (legacy courses have
+                            none, and show nothing rather than an empty card).
+                        */}
+                        <DocumentResourceCard
+                            url={courseData.document_url}
+                            title="Original Course Document"
+                            description="View the source document this course was built from."
+                            actionLabel="Open Document"
+                            className="mb-8"
+                        />
+
+                        {/* Processed notes — collapsible, and kept mounted while
+                            collapsed so toggling never re-renders or re-fetches. */}
+                        <CollapsibleSection title="Course Notes" defaultOpen>
+                            <CourseRenderer section={selectedSection} />
+                        </CollapsibleSection>
 
                         {/* Bottom navigation */}
                         <footer className="mt-16 pt-8 border-t border-gray-100 dark:border-gray-800">

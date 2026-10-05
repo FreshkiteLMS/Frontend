@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { courseService } from '@/services/api/course.api';
 import { normalizeSection, CourseRenderer } from './CourseRenderer';
 import { ProblemCourseManagePanel } from './problem-course-manage';
+import { DocumentResourceCard } from './DocumentResourceCard';
 
 interface CoursePreviewProps {
     courseId: string;
@@ -347,6 +348,18 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                                 <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
                                     {activeSection.title}
                                 </h3>
+
+                                {/* Mirrors the student view so the admin can confirm
+                                    the stored source link before publishing. Renders
+                                    nothing when the course has no document URL. */}
+                                <DocumentResourceCard
+                                    url={course.document_url}
+                                    title="Original Course Document"
+                                    description="The source document stored with this course."
+                                    actionLabel="Open Document"
+                                    className="mb-6"
+                                />
+
                                 <CourseRenderer section={activeSection} />
 
                                 <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
