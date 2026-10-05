@@ -9,7 +9,9 @@ import { courseService } from '@/services/api/course.api';
 import { courseGroupService } from '@/services/api/courseGroupService';
 import { problemCourseService } from '@/services/api/problem-course.api';
 import type { PreviewResult } from '@/types/problem-course';
+import type { StructuredCourse } from '@/types/structured-course';
 import { isValidDocumentUrl, normalizeDocumentUrlInput } from '@/lib/document-url';
+import { CourseProcessingPanel } from './CourseProcessingPanel';
 
 const templates = [
     {
@@ -22,7 +24,7 @@ const templates = [
     {
         id: 'text-video',
         name: 'Text and Video',
-        description: 'Text content with video lectures — supports images embedded directly in the source document',
+        description: 'Text content with video lectures — structured automatically from a normal document',
         icon: FileText,
         color: 'bg-blue-100 text-blue-600'
     },
@@ -73,18 +75,16 @@ export function CourseCreation() {
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
     // The source document link. This single value does double duty: it is what
-    // "Process Document" parses, AND what gets persisted as the course's
-    // `document_url` so students can open the original. One input, one stored
-    // field — no duplicate URL to keep in sync.
+    // "Process Document" sends to the AI pipeline, AND what gets persisted as
+    // the course's `document_url` so students can open the original.
     const [docLink, setDocLink] = useState('');
+    // AI-structured content stored on the course (null until processed).
+    const [structured, setStructured] = useState<StructuredCourse | null>(null);
     // Problem-solving template: Google Sheet URL + parsed preview results.
     const [sheetUrl, setSheetUrl] = useState('');
     const [sheetPreview, setSheetPreview] = useState<PreviewResult | null>(null);
     const [processingSheet, setProcessingSheet] = useState(false);
     const [groups, setGroups] = useState<any[]>([]);
-    // Server-side section IDs that were replaced by a new doc process — must be
-    // deleted from the server before the new sections are saved.
-    const [removedServerIds, setRemovedServerIds] = useState<string[]>([]);
     const searchParams = useSearchParams();
     const editId = searchParams.get('id');
 
@@ -109,6 +109,7 @@ export function CourseCreation() {
                     // replace, or clear it. Loading it does NOT re-process the
                     // document — that only happens on "Process Document".
                     setDocLink(course.document_url || '');
+                    setStructured(course.structured_content || null);
 
                     // Problem-solving: prefill the sheet URL + show the already-parsed
                     // results so the Content step has data without re-processing.
@@ -285,83 +286,10 @@ export function CourseCreation() {
     };
 
     /**
-     * Process a Google Doc: parse it into structured sections and load them into
-     * the editor. Admin-entered metadata is the source of truth — parsed metadata
-     * is only used to fill fields the admin left blank, and NEVER overrides input.
+     * Persist the course metadata (creating a draft on first save). Returns the
+     * course id. Used on its own before AI processing, which needs a course.
      */
-    const handleProcessDoc = async () => {
-        if (!docLink) return;
-        try {
-            setIsSaving(true);
-            const parsed = await courseService.parseDoc(docLink);
-
-            if (!parsed.sections || parsed.sections.length === 0) {
-                toast.error('No content sections could be extracted from this document.');
-                return;
-            }
-
-            // Any currently-persisted sections are about to be replaced.
-            // Record their server IDs so saveCourse() can delete them first.
-            const replacedIds = sections
-                .filter(s => s.persisted && s.serverId)
-                .map(s => s.serverId as string);
-            if (replacedIds.length > 0) {
-                setRemovedServerIds(prev => [...prev, ...replacedIds]);
-            }
-
-            // Map parsed sections into editor state (all new → persisted: false).
-            // Embedded images are already inline in `content` (uploaded to R2 and
-            // positioned exactly where they appeared in the doc) — nothing extra
-            // to wire up here; content_blocks is carried through for the API.
-            const mapped = parsed.sections.map((s, idx) => ({
-                id: idx + 1,
-                title: s.title,
-                content: s.content || '',
-                videoUrl: '',
-                youtube_videos: s.youtubeVideos || [],
-                assignments: s.assignments || [],
-                resources: s.resources || [],
-                content_blocks: s.contentBlocks || [],
-                persisted: false
-            }));
-            setSections(mapped);
-
-            // Fill ONLY blank metadata fields from parsed suggestions
-            setCourseData(prev => ({
-                ...prev,
-                title: prev.title || parsed.metadata.title || '',
-                description: prev.description || parsed.metadata.description || '',
-                duration: prev.duration || (parsed.metadata.estimated_duration ? String(parsed.metadata.estimated_duration) : ''),
-            }));
-
-            const videoCount = mapped.reduce((n, s) => n + s.youtube_videos.length, 0);
-            const assignmentCount = mapped.reduce((n, s) => n + s.assignments.length, 0);
-            const imageCount = mapped.reduce(
-                (n, s) => n + s.content_blocks.filter((b: any) => b.type === 'image').length, 0
-            );
-            toast.success(`Imported ${mapped.length} sections, ${videoCount} videos, ${imageCount} images, ${assignmentCount} assignments`);
-
-            if (parsed.warnings && parsed.warnings.length > 0) {
-                toast.error(`${parsed.warnings.length} warning${parsed.warnings.length === 1 ? '' : 's'}: ${parsed.warnings[0]}`);
-            }
-        } catch (err: any) {
-            console.error(err);
-            // Prefer the server's specific reason (e.g. server not configured,
-            // non-native Google Doc) over the generic sharing hint, which is only
-            // the right guidance when Google actually denied access.
-            const serverMessage = err?.response?.data?.message;
-            toast.error(serverMessage || 'Failed to process document. Make sure it is a shared Google Doc.');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    /**
-     * Persist the course as a draft. Returns the course id, or null on failure.
-     * Sections already saved on the server (persisted: true) are skipped to avoid
-     * duplicates; newly added/parsed sections are inserted and marked persisted.
-     */
-    const saveCourse = async (): Promise<string | null> => {
+    const saveCourseDetails = async (): Promise<string | null> => {
         // The source document link travels with the course metadata. `null` means
         // the admin left it blank or cleared it, which removes the stored link and
         // hides the student-facing document card. The server re-validates.
@@ -402,27 +330,21 @@ export function CourseCreation() {
         }
 
         if (!courseId) throw new Error('Course id missing after save');
+        return courseId;
+    };
 
-        // Delete server sections that were replaced when the admin re-processed
-        // a Google Doc. Without this, the old sections stay on the server and
-        // appear alongside (or instead of) the new content in the preview.
-        if (removedServerIds.length > 0) {
-            for (const sectionId of removedServerIds) {
-                try {
-                    await courseService.deleteSection(courseId, sectionId);
-                } catch (err) {
-                    console.error(`Failed to delete replaced section ${sectionId}:`, err);
-                }
-            }
-            setRemovedServerIds([]);
-        }
+    /**
+     * Persist the course as a draft: metadata, then any new manual sections.
+     * AI-structured content is already stored server-side by processing.
+     * Sections already saved (persisted: true) are skipped to avoid duplicates.
+     */
+    const saveCourse = async (): Promise<string | null> => {
+        const courseId = await saveCourseDetails();
+        if (!courseId || structured) return courseId;
 
         // A section must carry SOMETHING to be saveable — this mirrors the
-        // server's validation. Bare headings (common in large parsed docs) have
-        // no body and would be rejected with a 400, so we skip them here rather
-        // than let one empty section abort the whole save.
-        // Embedded images live inline within `content` (as markdown image tags),
-        // so a section with only images still passes the content check below.
+        // server's validation — so untouched empty sections are skipped rather
+        // than letting one abort the whole save.
         const hasBody = (s: any): boolean =>
             !!(s.content?.trim()) ||
             !!(s.videoUrl?.trim()) ||
@@ -447,8 +369,7 @@ export function CourseCreation() {
                     videoUrl: section.videoUrl || '',
                     youtube_videos: section.youtube_videos || [],
                     assignments: section.assignments || [],
-                    resources: section.resources || [],
-                    content_blocks: section.content_blocks || undefined
+                    resources: section.resources || []
                 });
                 persistedIds.add(section.id);
             } catch (err: any) {
@@ -476,9 +397,6 @@ export function CourseCreation() {
 
     const isProblemSolving = selectedTemplate === 'problem-solving';
 
-    // Empty is valid — a course need not have a source document. Only a non-empty
-    // value that isn't a safe http(s) URL is flagged.
-    const docLinkInvalid = docLink.trim().length > 0 && !isValidDocumentUrl(docLink);
 
     const handleSaveDraft = async () => {
         try {
@@ -792,57 +710,27 @@ export function CourseCreation() {
                     <div className="mb-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Course Content</h3>
 
-                        {/* Google Doc Link Option */}
-                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
-                            <div className="flex items-start gap-4">
-                                <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-1" />
-                                <div className="flex-1">
-                                    <h4 className="text-gray-900 dark:text-white font-medium mb-2">Source Document</h4>
-                                    <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
-                                        Paste a Google Doc link. We extract sections, content, YouTube videos, and assignments into the editor below.
-                                        Images pasted directly into the document are uploaded automatically and appear inline at the exact position you placed them.
-                                        Your course title, description, price and other details stay exactly as you entered them.
-                                    </p>
-                                    <label htmlFor="course-document-url" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                        Document URL (optional)
-                                    </label>
-                                    <div className="flex flex-col sm:flex-row gap-2">
-                                        <input
-                                            id="course-document-url"
-                                            type="url"
-                                            inputMode="url"
-                                            aria-describedby="course-document-url-help"
-                                            aria-invalid={docLinkInvalid}
-                                            className={`flex-1 min-w-0 px-4 py-2 border dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:border-transparent outline-none ${
-                                                docLinkInvalid
-                                                    ? 'border-red-400 focus:ring-red-500 dark:border-red-500'
-                                                    : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
-                                            }`}
-                                            placeholder="https://docs.google.com/document/d/..."
-                                            value={docLink}
-                                            onChange={(e) => setDocLink(e.target.value)}
-                                        />
-                                        <button
-                                            onClick={handleProcessDoc}
-                                            disabled={isSaving || !docLink.trim() || docLinkInvalid}
-                                            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
-                                        >
-                                            {isSaving ? 'Processing...' : 'Process Document'}
-                                        </button>
-                                    </div>
-                                    <p id="course-document-url-help" className={`mt-2 text-xs ${docLinkInvalid ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                                        {docLinkInvalid
-                                            ? 'Enter a valid http(s) link, for example https://example.com/document.pdf'
-                                            : 'Saved with the course and shown to students as an “Open Document” link alongside the processed notes. Clear the field to remove it. Saving the link does not re-process the document.'}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
+                        <CourseProcessingPanel
+                            courseId={createdCourseId}
+                            docLink={docLink}
+                            onDocLinkChange={setDocLink}
+                            ensureCourseSaved={saveCourseDetails}
+                            structured={structured}
+                            onProcessed={(course) => setStructured(course.structured_content || null)}
+                        />
 
-                        <div className="text-center text-gray-500 dark:text-gray-400 mb-6">or add sections manually</div>
+                        {structured ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                                Students see the AI-structured lessons above. To change the content, edit the source
+                                document and reprocess it.
+                            </p>
+                        ) : (
+                            <div className="text-center text-gray-500 dark:text-gray-400 mb-6">or add sections manually</div>
+                        )}
                     </div>
 
-                    {/* Manual Section Creation */}
+                    {/* Manual sections — the authoring path for courses without an AI-processed document. */}
+                    {!structured && (
                     <div className="space-y-6">
                         {sections.map((section, index) => (
                             <div key={section.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
@@ -929,6 +817,7 @@ export function CourseCreation() {
                             + Add Section
                         </button>
                     </div>
+                    )}
                     </>
                     )}
 

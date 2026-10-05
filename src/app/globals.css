@@ -289,4 +289,35 @@ body {
 
 .roadmap-line-d3 {
   animation-delay: 0.8s;
-}
+}
+
+/* Syntax highlighting for course code blocks (highlight.js token classes).
+   Code panels are always dark (#1e1e2e), so one palette serves both themes. */
+.code-highlight .hljs-comment,
+.code-highlight .hljs-quote { color: #7f849c; font-style: italic; }
+.code-highlight .hljs-keyword,
+.code-highlight .hljs-selector-tag,
+.code-highlight .hljs-built_in,
+.code-highlight .hljs-meta .hljs-keyword { color: #cba6f7; }
+.code-highlight .hljs-string,
+.code-highlight .hljs-regexp,
+.code-highlight .hljs-addition { color: #a6e3a1; }
+.code-highlight .hljs-number,
+.code-highlight .hljs-literal,
+.code-highlight .hljs-symbol { color: #fab387; }
+.code-highlight .hljs-title,
+.code-highlight .hljs-title.function_,
+.code-highlight .hljs-section { color: #89b4fa; }
+.code-highlight .hljs-title.class_,
+.code-highlight .hljs-type { color: #f9e2af; }
+.code-highlight .hljs-attr,
+.code-highlight .hljs-attribute,
+.code-highlight .hljs-variable,
+.code-highlight .hljs-template-variable,
+.code-highlight .hljs-params { color: #f5c2e7; }
+.code-highlight .hljs-meta,
+.code-highlight .hljs-tag,
+.code-highlight .hljs-name { color: #94e2d5; }
+.code-highlight .hljs-deletion { color: #f38ba8; }
+.code-highlight .hljs-emphasis { font-style: italic; }
+.code-highlight .hljs-strong { font-weight: 600; }

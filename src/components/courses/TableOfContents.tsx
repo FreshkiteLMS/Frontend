@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { AlignLeft } from "lucide-react";
-import type { Heading } from "./CourseRenderer";
+
+/** A TOC entry; `id` is the DOM id of the heading element to scroll to. */
+export interface Heading {
+    id: string;
+    text: string;
+    level: 1 | 2 | 3;
+}
 
 interface TableOfContentsProps {
     headings: Heading[];

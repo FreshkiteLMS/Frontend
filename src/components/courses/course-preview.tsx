@@ -5,7 +5,7 @@ import { ArrowLeft, Eye, Send, CheckCircle, BookOpen, PlayCircle, CheckSquare, T
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import { courseService } from '@/services/api/course.api';
-import { normalizeSection, CourseRenderer } from './CourseRenderer';
+import { buildCourseOutline, countContent, LessonBody } from './course-outline';
 import { ProblemCourseManagePanel } from './problem-course-manage';
 import { DocumentResourceCard } from './DocumentResourceCard';
 
@@ -123,7 +123,8 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
         );
     }
 
-    const sections = course.sections || [];
+    const outline = buildCourseOutline(course);
+    const lessons = outline.lessons;
     const isProblemSolving = course.template_type === 'problem-solving';
     const problemSections = course.problem_sections || [];
     const totalProblems = problemSections.reduce((n: number, s: any) => n + (s.problems?.length || 0), 0);
@@ -132,13 +133,14 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
     const isPublished = course.status === 'active';
     const busy = isPublishing || isUnpublishing || isDeleting;
 
-    // Aggregate stats across all sections (using the same normalizer as the renderer)
-    const normalized = sections.map((s: any) => normalizeSection(s));
-    const totalLessons = sections.length;
-    const totalVideos = normalized.reduce((sum: number, s: any) => sum + s.videos.length, 0);
-    const totalAssignments = normalized.reduce((sum: number, s: any) => sum + s.assignments.length, 0);
+    // Aggregate stats across all lessons, whichever format the course is stored in.
+    const totalLessons = lessons.length;
+    const totalVideos = countContent(outline, 'video');
+    const totalAssignments = countContent(outline, 'exercise');
+    const lessonNoun = outline.format === 'structured' ? 'lesson' : 'section';
+    const processingFailed = course.content_processing?.status === 'failed';
 
-    const activeSection = sections[currentSection];
+    const activeSection = lessons[currentSection];
 
     return (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -292,13 +294,15 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                             ) : (
                                 <>
                                     <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-                                        <BookOpen className="w-4 h-4" /> {totalLessons} {totalLessons === 1 ? 'section' : 'sections'}
+                                        <BookOpen className="w-4 h-4" /> {totalLessons} {totalLessons === 1 ? lessonNoun : `${lessonNoun}s`}
                                     </div>
                                     <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
                                         <PlayCircle className="w-4 h-4" /> {totalVideos} {totalVideos === 1 ? 'video' : 'videos'}
                                     </div>
                                     <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-                                        <CheckSquare className="w-4 h-4" /> {totalAssignments} {totalAssignments === 1 ? 'assignment' : 'assignments'}
+                                        <CheckSquare className="w-4 h-4" /> {totalAssignments} {outline.format === 'structured'
+                                            ? (totalAssignments === 1 ? 'exercise' : 'exercises')
+                                            : (totalAssignments === 1 ? 'assignment' : 'assignments')}
                                     </div>
                                 </>
                             )}
@@ -306,6 +310,17 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                     </div>
                 </div>
             </div>
+
+            {processingFailed && (
+                <div role="alert" className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-sm">
+                    <p className="font-medium text-red-800 dark:text-red-300">The last document processing run failed.</p>
+                    <p className="text-red-700 dark:text-red-300/90">
+                        {course.content_processing?.error_message || 'Processing failed.'}{' '}
+                        {outline.format === 'structured' ? 'The previously processed lessons below are unchanged. ' : ''}
+                        Use &ldquo;Edit&rdquo; to reprocess the document.
+                    </p>
+                </div>
+            )}
 
             {/* ───────── Content ───────── */}
             {isProblemSolving ? (
@@ -319,22 +334,38 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-1">
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 sticky top-4">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Sections</h3>
-                        {sections.length === 0 ? (
-                            <p className="text-sm text-gray-400">No sections yet.</p>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                            {outline.format === 'structured' ? 'Modules' : 'Sections'}
+                        </h3>
+                        {lessons.length === 0 ? (
+                            <p className="text-sm text-gray-400">No content yet.</p>
                         ) : (
-                            <nav className="space-y-2">
-                                {sections.map((section: any, index: number) => (
-                                    <button
-                                        key={section.id}
-                                        onClick={() => setCurrentSection(index)}
-                                        className={`w-full text-left p-3 rounded-lg transition-colors ${currentSection === index
-                                            ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                                            : 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                                            }`}
-                                    >
-                                        <p className="text-sm font-medium">{index + 1}. {section.title}</p>
-                                    </button>
+                            <nav className="space-y-4">
+                                {outline.modules.map((module, mi) => (
+                                    <div key={module.id}>
+                                        {module.title && (
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+                                                {mi + 1}. {module.title}
+                                            </p>
+                                        )}
+                                        <div className="space-y-1.5">
+                                            {module.lessons.map((lesson) => {
+                                                const index = lessons.indexOf(lesson);
+                                                return (
+                                                    <button
+                                                        key={lesson.id}
+                                                        onClick={() => setCurrentSection(index)}
+                                                        className={`w-full text-left p-3 rounded-lg transition-colors ${currentSection === index
+                                                            ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                                                            : 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                                            }`}
+                                                    >
+                                                        <p className="text-sm font-medium">{index + 1}. {lesson.title}</p>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                 ))}
                             </nav>
                         )}
@@ -360,7 +391,7 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                                     className="mb-6"
                                 />
 
-                                <CourseRenderer section={activeSection} />
+                                <LessonBody item={activeSection} />
 
                                 <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
                                     <button
@@ -371,11 +402,11 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                                         Previous
                                     </button>
                                     <span className="text-sm text-gray-600 dark:text-gray-400">
-                                        Section {currentSection + 1} of {sections.length}
+                                        {outline.format === 'structured' ? 'Lesson' : 'Section'} {currentSection + 1} of {lessons.length}
                                     </span>
                                     <button
-                                        onClick={() => setCurrentSection(Math.min(sections.length - 1, currentSection + 1))}
-                                        disabled={currentSection === sections.length - 1}
+                                        onClick={() => setCurrentSection(Math.min(lessons.length - 1, currentSection + 1))}
+                                        disabled={currentSection === lessons.length - 1}
                                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     >
                                         Next
@@ -383,7 +414,7 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                                 </div>
                             </>
                         ) : (
-                            <p className="text-center text-gray-400 py-12">This course has no content sections yet.</p>
+                            <p className="text-center text-gray-400 py-12">This course has no content yet.</p>
                         )}
                     </div>
                 </div>
@@ -411,7 +442,7 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                             <h4 className="text-gray-900 dark:text-white text-sm font-medium mb-1">Preview Mode</h4>
                             <p className="text-gray-700 dark:text-gray-300 text-sm">
                                 Review everything above. Click &ldquo;Publish Course&rdquo; when you&apos;re ready to make it available to students.
-                                Publishing is blocked until the course has a title, description, price, and at least one section.
+                                Publishing is blocked until the course has a title, description, price, and at least one lesson or section.
                             </p>
                         </div>
                     </div>

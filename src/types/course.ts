@@ -1,4 +1,4 @@
-import type { ContentBlock } from './content-blocks';
+import type { ProcessingStatus, StructuredCourse } from './structured-course';
 
 export interface CourseSection {
     id: string;
@@ -10,34 +10,7 @@ export interface CourseSection {
     assignments?: string[];
     resources?: string[];
     duration: number;
-    // Structured mirror of `content` (headings/paragraphs/embedded images in
-    // document order). Optional — older sections predate this field.
-    content_blocks?: ContentBlock[];
     created_at?: string;
-}
-
-/** Shape returned by POST /docs/parse */
-export interface ParsedSection {
-    title: string;
-    content: string;
-    contentBlocks: ContentBlock[];
-    youtubeVideos: string[];
-    assignments: string[];
-    resources: string[];
-}
-
-export interface ParsedCourse {
-    metadata: {
-        title?: string;
-        description?: string;
-        category?: string;
-        difficulty?: string;
-        price?: number;
-        estimated_duration?: number;
-        template_type?: string;
-    };
-    sections: ParsedSection[];
-    warnings: string[];
 }
 
 export interface Course {
@@ -65,6 +38,14 @@ export interface Course {
      * every course created before this field existed.
      */
     document_url?: string | null;
+    /**
+     * AI-structured content. When present it is what students see; legacy
+     * `sections` are kept on the record but not rendered. Absent on courses
+     * created before AI structuring (they render through the legacy renderer).
+     */
+    structured_content?: StructuredCourse | null;
+    /** Raw processing record; poll GET /courses/:id/processing for the live view. */
+    content_processing?: { status: ProcessingStatus; error_message?: string | null } | null;
     // Problem-solving template only (present when template_type === 'problem-solving').
     problem_sections?: Array<{ id: string; title: string; icon: string; problems: unknown[] }>;
     problem_sheet?: { url: string; spreadsheet_id: string; last_synced_at?: string; last_warnings?: string[] };

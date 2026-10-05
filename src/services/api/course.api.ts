@@ -1,6 +1,7 @@
 import api from './axios';
 
 import { Course } from '@/types/course';
+import type { ProcessingState } from '@/types/structured-course';
 
 export const courseService = {
     getAll: async (filters: any = {}): Promise<Course[] & { data: Course[], meta: any }> => {
@@ -80,8 +81,8 @@ export const courseService = {
                 template_type: courseData.template_type || courseData.templateType,
                 price: Number(courseData.price),
                 thumbnail_url: courseData.thumbnail_url,
-                // Source document link. Sent as metadata only — the parse step is
-                // the separate POST /docs/parse call the admin triggers explicitly.
+                // Source document link. Sent as metadata only — AI processing is
+                // the separate processDocument() call the admin triggers explicitly.
                 document_url: courseData.document_url ?? null,
                 status: 'inactive'
             };
@@ -101,20 +102,25 @@ export const courseService = {
     },
 
     /**
-     * Parse a Google Doc into structured sections WITHOUT creating a course.
-     * Admin form metadata stays the source of truth.
+     * Start AI processing (or reprocessing) of a course's source document.
+     * Server-side only — the AI runs in the backend and the result is stored;
+     * returns the initial processing state immediately (HTTP 202).
      */
-    parseDoc: async (docLink: string): Promise<import('@/types/course').ParsedCourse> => {
-        try {
-            const response = await api.post('/docs/parse', { docLink });
-            if (response.data.success) {
-                return response.data.data;
-            }
-            throw new Error(response.data.message || 'Failed to parse document');
-        } catch (error: any) {
-            console.error('Error parsing document:', error);
-            throw error;
+    processDocument: async (courseId: string, documentUrl?: string | null): Promise<ProcessingState> => {
+        const response = await api.post(`/courses/${courseId}/process`, documentUrl ? { document_url: documentUrl } : {});
+        if (response.data.success) {
+            return response.data.data;
         }
+        throw new Error(response.data.message || 'Failed to start document processing');
+    },
+
+    /** Current processing state, or null if the course was never processed. */
+    getProcessingStatus: async (courseId: string): Promise<ProcessingState | null> => {
+        const response = await api.get(`/courses/${courseId}/processing`);
+        if (response.data.success) {
+            return response.data.data;
+        }
+        throw new Error(response.data.message || 'Failed to fetch processing status');
     },
 
     addSection: async (courseId: string, sectionData: any): Promise<any> => {
@@ -127,9 +133,7 @@ export const courseService = {
                 youtube_videos: sectionData.youtube_videos || sectionData.youtubeVideos || [],
                 assignments: sectionData.assignments || [],
                 resources: sectionData.resources || [],
-                duration: sectionData.duration || 0,
-                // Structured mirror of embedded images/headings/paragraphs, if parsed.
-                content_blocks: sectionData.content_blocks || sectionData.contentBlocks || undefined
+                duration: sectionData.duration || 0
             };
 
             const response = await api.post(`/courses/${courseId}/sections`, payload);
