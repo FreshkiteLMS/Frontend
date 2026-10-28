@@ -1,4 +1,6 @@
 
+import type { ProgressMetrics } from './structured-questions';
+
 export interface StudentEnrollmentData {
     firstName: string;
     lastName: string;
@@ -47,6 +49,14 @@ export interface StudentCourseDetail {
     lastViewed?: string | null;
     purchasedAt?: string | null;
     status: 'completed' | 'in-progress' | 'not-started';
+    templateType?: string;
+    /** Structured Course only: imported question/assignment progress. */
+    questionProgress?: {
+        overall: ProgressMetrics;
+        audio: ProgressMetrics;
+        assignment: ProgressMetrics;
+        lastActivity: string | null;
+    } | null;
 }
 
 export interface StudentBatchDetail {

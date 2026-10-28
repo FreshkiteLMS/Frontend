@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Video, FileText, Type, Save, Eye, Trash2, Table2, Info } from 'lucide-react';
+import { ArrowLeft, Video, FileText, Type, Save, Eye, Trash2, Table2, Info, ListChecks } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { courseService } from '@/services/api/course.api';
@@ -12,6 +12,8 @@ import type { PreviewResult } from '@/types/problem-course';
 import type { StructuredCourse } from '@/types/structured-course';
 import { isValidDocumentUrl, normalizeDocumentUrlInput } from '@/lib/document-url';
 import { CourseProcessingPanel } from './CourseProcessingPanel';
+import { QuestionImportPanel } from './structured-questions/QuestionImportPanel';
+import { STRUCTURED_COURSE_TEMPLATE } from '@/types/structured-questions';
 
 const templates = [
     {
@@ -41,6 +43,13 @@ const templates = [
         description: 'Auto-build an interactive DSA tracker from a Google Sheet',
         icon: Table2,
         color: 'bg-indigo-100 text-indigo-600'
+    },
+    {
+        id: STRUCTURED_COURSE_TEMPLATE,
+        name: 'Structured Course',
+        description: 'Learning content from a document plus audio questions and assignments imported from a spreadsheet, with per-student progress tracking',
+        icon: ListChecks,
+        color: 'bg-teal-100 text-teal-600'
     }
 ];
 
@@ -396,6 +405,8 @@ export function CourseCreation() {
     };
 
     const isProblemSolving = selectedTemplate === 'problem-solving';
+    const isStructuredCourse = selectedTemplate === STRUCTURED_COURSE_TEMPLATE;
+    const [questionsImported, setQuestionsImported] = useState(0);
 
 
     const handleSaveDraft = async () => {
@@ -718,6 +729,21 @@ export function CourseCreation() {
                             structured={structured}
                             onProcessed={(course) => setStructured(course.structured_content || null)}
                         />
+
+                        {isStructuredCourse && (
+                            <div className="mb-6">
+                                <QuestionImportPanel
+                                    courseId={createdCourseId}
+                                    ensureCourseSaved={saveCourseDetails}
+                                    onImported={(r) => setQuestionsImported((n) => n + (r.result?.inserted ?? 0) + (r.result?.updated ?? 0))}
+                                />
+                                {questionsImported > 0 && (
+                                    <p className="mt-2 text-sm text-green-700 dark:text-green-400" role="status">
+                                        Questions saved. You can import more, or manage them from the course preview after saving.
+                                    </p>
+                                )}
+                            </div>
+                        )}
 
                         {structured ? (
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">

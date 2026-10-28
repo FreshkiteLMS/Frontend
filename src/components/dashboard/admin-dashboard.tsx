@@ -17,7 +17,8 @@ import {
     Edit,
     Trash2,
     Search,
-    ShieldCheck
+    ShieldCheck,
+    ListChecks
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
@@ -716,6 +717,15 @@ export function AdminDashboard() {
                                             <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">₹{course.price}</td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-2">
+                                                    {course.template_type === 'structured-course' && (
+                                                        <button
+                                                            onClick={() => handleNavigate(`/admin/courses/${course.id}/question-progress`)}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:text-blue-600 hover:border-blue-400 transition-colors"
+                                                            title="Questions & assignments: student progress"
+                                                        >
+                                                            <ListChecks className="w-3.5 h-3.5" aria-hidden="true" /> Student progress
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => handleNavigate(`/admin/courses/${course.id}/preview`)}
                                                         className="text-gray-400 hover:text-blue-600 transition-colors"

@@ -8,6 +8,8 @@ import { courseService } from '@/services/api/course.api';
 import { buildCourseOutline, countContent, LessonBody } from './course-outline';
 import { ProblemCourseManagePanel } from './problem-course-manage';
 import { DocumentResourceCard } from './DocumentResourceCard';
+import { QuestionManager } from './structured-questions/QuestionManager';
+import { STRUCTURED_COURSE_TEMPLATE } from '@/types/structured-questions';
 
 interface CoursePreviewProps {
     courseId: string;
@@ -421,6 +423,12 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
             </div>
             )}
 
+            {course.template_type === STRUCTURED_COURSE_TEMPLATE && (
+                <div className="mt-8">
+                    <QuestionManager courseId={course.id || course._id} />
+                </div>
+            )}
+
             {isPublished ? (
                 <div className="mt-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
                     <div className="flex items-start gap-3">
@@ -442,7 +450,8 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
                             <h4 className="text-gray-900 dark:text-white text-sm font-medium mb-1">Preview Mode</h4>
                             <p className="text-gray-700 dark:text-gray-300 text-sm">
                                 Review everything above. Click &ldquo;Publish Course&rdquo; when you&apos;re ready to make it available to students.
-                                Publishing is blocked until the course has a title, description, price, and at least one lesson or section.
+                                Publishing is blocked until the course has a title, description, price, and at least one lesson or section
+                                {course.template_type === STRUCTURED_COURSE_TEMPLATE ? ' (or, for a Structured Course, at least one active question)' : ''}.
                             </p>
                         </div>
                     </div>

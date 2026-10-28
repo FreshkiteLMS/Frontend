@@ -10,6 +10,7 @@ import {
     Menu,
     BookOpen,
     LayoutList,
+    ListChecks,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { progressService } from '@/services/api/progress.api';
@@ -22,6 +23,8 @@ import { ProblemTracker } from './problem-tracker/ProblemTracker';
 import { DocumentResourceCard } from './DocumentResourceCard';
 import { CourseOverview } from './structured/CourseOverview';
 import { LessonBody, buildCourseOutline, lessonHeadings, type CourseOutline } from './course-outline';
+import { StudentQuestionsPanel } from './structured-questions/StudentQuestionsPanel';
+import { STRUCTURED_COURSE_TEMPLATE } from '@/types/structured-questions';
 
 // ─── Reading progress bar ─────────────────────────────────────────────────────
 
@@ -52,6 +55,8 @@ function ReadingProgress() {
 
 /** Sentinel selection for the course overview page (structured courses). */
 const OVERVIEW = '__overview__';
+/** Sentinel selection for the Questions & Assignments page (Structured Course template). */
+const QUESTIONS = '__questions__';
 
 interface CourseViewerProps {
     courseId: string;
@@ -76,6 +81,7 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
     const selectedLesson = selectedIndex >= 0 ? lessons[selectedIndex] : null;
     const headings = useMemo(() => lessonHeadings(selectedLesson), [selectedLesson]);
     const isStructured = outline?.format === 'structured';
+    const hasQuestions = courseData?.template_type === STRUCTURED_COURSE_TEMPLATE;
 
     useEffect(() => {
         const fetchCourseData = async () => {
@@ -106,8 +112,12 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
 
                 const firstIncomplete = nextOutline.lessons.find((l) => !done.has(l.id));
                 const startedStructured = nextOutline.format === 'structured' && nextOutline.lessons.some((l) => done.has(l.id));
+                // A Structured Course may have imported questions but no lessons yet.
+                const questionsOnly = data.template_type === STRUCTURED_COURSE_TEMPLATE && nextOutline.lessons.length === 0;
                 setSelectedId(
-                    nextOutline.format === 'structured' && !startedStructured
+                    questionsOnly
+                        ? QUESTIONS
+                        : nextOutline.format === 'structured' && !startedStructured
                         ? OVERVIEW
                         : (firstIncomplete || nextOutline.lessons[0])?.id ?? null
                 );
@@ -243,6 +253,21 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                             </button>
                         )}
 
+                        {hasQuestions && (
+                            <button
+                                onClick={() => selectLesson(QUESTIONS)}
+                                aria-current={selectedId === QUESTIONS ? 'page' : undefined}
+                                className={`w-full text-left px-4 py-2.5 mb-1 flex items-center gap-3 text-[13px] font-medium border-r-2 transition-colors ${
+                                    selectedId === QUESTIONS
+                                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-600 dark:text-blue-400'
+                                        : 'border-transparent text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                                }`}
+                            >
+                                <ListChecks className="w-4 h-4" />
+                                Questions &amp; Assignments
+                            </button>
+                        )}
+
                         {outline.modules.map((module, mi) => (
                             <div key={module.id} className="mb-2">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-600 px-5 py-2">
@@ -305,7 +330,7 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                         <Menu className="w-5 h-5" />
                     </button>
                     <span className="text-sm text-gray-600 dark:text-gray-400 font-medium truncate">
-                        {selectedLesson?.title ?? 'Course overview'}
+                        {selectedId === QUESTIONS ? 'Questions & Assignments' : selectedLesson?.title ?? 'Course overview'}
                     </span>
                 </div>
 
@@ -313,7 +338,11 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                     {/* Fills all space beside the sidebar. Prose is capped for readable
                         line length inside LessonContent; code, tables and media use the full width. */}
                     <article className="flex-1 w-full px-5 sm:px-8 lg:px-12 xl:px-16 py-10 min-w-0">
-                        {selectedId === OVERVIEW || !selectedLesson ? (
+                        {selectedId === QUESTIONS ? (
+                            <div className="max-w-5xl">
+                                <StudentQuestionsPanel courseId={courseData.id || courseData._id} readOnly={user?.role !== 'student'} />
+                            </div>
+                        ) : selectedId === OVERVIEW || !selectedLesson ? (
                             <div className="max-w-5xl">
                                 <CourseOverview
                                     title={courseData.title}
