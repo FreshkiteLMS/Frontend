@@ -85,3 +85,23 @@ export interface StudentDetails {
         averageProgress: number;
     };
 }
+
+/** How a student came to have a course (a course can have several). */
+export type AccessSource = 'direct' | 'batch' | 'bundle' | 'full_access';
+
+export interface AccessibleCourse {
+    id: string;      // Course.id (UUID)
+    _id: string;     // Course._id
+    title: string;
+    status: string;
+    via: AccessSource[];
+    bundleIds: string[];
+}
+
+/** GET /students/me/access — resolved by the same server rules that gate content. */
+export interface MyAccess {
+    fullAccess: boolean;
+    bundleIds: string[];
+    courses: AccessibleCourse[];
+    grants: { productType: 'COURSE' | 'BUNDLE' | 'ALL_IN_ONE'; productId: string; source: string }[];
+}

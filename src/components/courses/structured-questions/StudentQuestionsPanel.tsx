@@ -14,8 +14,9 @@ import {
     type QuestionType,
     type StudentQuestion,
 } from '@/types/structured-questions';
-import { formatDateTime, formatDueDate, isOverdue, percent, studentActions } from '@/lib/question-progress';
+import { formatDateTime, formatDueDate, formatMarks, isOverdue, percent, studentActions } from '@/lib/question-progress';
 import { QuestionStatusBadge } from './QuestionStatusBadge';
+import { MarksInput } from './MarksInput';
 import { StatusStepper } from './StatusStepper';
 import { Pagination } from './Pagination';
 import { useDebouncedValue } from './useDebouncedValue';
@@ -199,6 +200,36 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
         }
     };
 
+    // Shares the per-question in-flight guard with status changes: both write
+    // the same versioned record, so they must not race each other.
+    const updateScore = async (question: StudentQuestion, marks: number | null) => {
+        if (readOnly || inFlight.current.has(question.id)) return;
+        inFlight.current.add(question.id);
+        setPending(prev => new Set(prev).add(question.id));
+        try {
+            const res = await structuredCourseService.setMyScore(courseId, question.id, marks, question.progress.version);
+            applyProgress(question.id, res);
+            flashSaved(question.id, res.marksObtained === null ? 'Score cleared' : `Score saved: ${formatMarks(res.marksObtained, res.marksMax)}`);
+            loadSummary();
+            if (filters.status && filters.status !== res.status) load();
+        } catch (err) {
+            const latest = apiErrorDetails<{ progress?: QuestionProgress }>(err)?.progress;
+            if (latest) applyProgress(question.id, latest);
+            if (apiErrorCode(err) === 'VERSION_CONFLICT' && latest) {
+                toast(apiErrorMessage(err, 'This question changed elsewhere. The latest score is now shown.'), { icon: 'ℹ️' });
+            } else {
+                toast.error(apiErrorMessage(err, 'Could not save your score. Nothing was changed — please try again.'));
+            }
+        } finally {
+            inFlight.current.delete(question.id);
+            setPending(prev => {
+                const next = new Set(prev);
+                next.delete(question.id);
+                return next;
+            });
+        }
+    };
+
     const set = <K extends keyof Filters>(key: K, value: Filters[K]) => setFilters(prev => ({ ...prev, [key]: value }));
     const toggle = (id: string) => setExpanded(prev => {
         const next = new Set(prev);
@@ -220,6 +251,7 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     Practise the audio questions out loud and work through the assignments. Move each one from
                     <em> Not started</em> to <em>In progress</em> to <em>Completed</em> — your instructor records pass/fail.
+                    After answering an audio question, record the score you gave yourself.
                 </p>
             </header>
 
@@ -376,6 +408,9 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
                                                         <CalendarClock className="w-3.5 h-3.5" aria-hidden="true" />Due {formatDueDate(question.dueDate)}{overdue ? ' (overdue)' : ''}
                                                     </span>
                                                 )}
+                                                {question.maxMarks !== null && (
+                                                    <span className="inline-flex items-center gap-1">Out of {formatMarks(question.maxMarks, null)} marks</span>
+                                                )}
                                                 <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
                                                     {isOpen ? 'Hide details' : 'View details'}
                                                     <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
@@ -394,6 +429,18 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
                                                 busy={isPending}
                                                 onChange={s => updateStatus(question, s)}
                                                 label={`Status of “${question.title}”`}
+                                            />
+                                        )}
+                                        {question.type === 'audio_question' && question.maxMarks !== null && (
+                                            <MarksInput
+                                                maxMarks={question.maxMarks}
+                                                marksObtained={question.progress.marksObtained ?? null}
+                                                marksMax={question.progress.marksMax ?? null}
+                                                busy={isPending}
+                                                readOnly={readOnly || question.progress.status === 'PASS'}
+                                                lockedReason={question.progress.status === 'PASS' ? 'locked after passing' : undefined}
+                                                onSave={m => updateScore(question, m)}
+                                                label={`Your score for “${question.title}”, out of ${question.maxMarks}`}
                                             />
                                         )}
                                         <span className="min-h-[1rem] text-[11px] text-gray-400" aria-live="polite">

@@ -64,3 +64,27 @@ export function isOverdue(iso: string | null | undefined, now = new Date()): boo
 export function percent(n: number): string {
     return `${Number.isFinite(n) ? Math.round(n) : 0}%`;
 }
+
+/** Marks allow up to two decimal places (mirrors the server). */
+export const MARKS_DECIMALS = 2;
+
+/** "8 / 10", "8.5 / 10" — trailing zeros dropped. */
+export function formatMarks(obtained: number, max: number | null | undefined): string {
+    const n = (v: number) => String(Number(v.toFixed(MARKS_DECIMALS)));
+    return max === null || max === undefined ? n(obtained) : `${n(obtained)} / ${n(max)}`;
+}
+
+/**
+ * Validate a typed score against the question's maximum. Mirrors the server
+ * checks so students get instant feedback; the server remains the authority.
+ * Empty input means "no score".
+ */
+export function parseMarksInput(raw: string, max: number): { value: number | null; error?: string } {
+    const text = raw.trim();
+    if (!text) return { value: null };
+    if (!/^\d+(\.\d+)?$/.test(text)) return { value: null, error: text.startsWith('-') ? 'Marks cannot be negative.' : 'Enter a number, like 8 or 8.5.' };
+    if (!new RegExp(`^\\d+(\\.\\d{1,${MARKS_DECIMALS}})?$`).test(text)) return { value: null, error: `Use at most ${MARKS_DECIMALS} decimal places.` };
+    const value = Number(text);
+    if (value > max) return { value: null, error: `Marks cannot be more than ${formatMarks(max, null)}.` };
+    return { value };
+}

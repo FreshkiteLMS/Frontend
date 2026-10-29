@@ -1,6 +1,6 @@
 
 import api from './axios';
-import { Student, StudentEnrollmentData, StudentDetails, PaginatedStudents } from '@/types/student';
+import { Student, StudentEnrollmentData, StudentDetails, PaginatedStudents, MyAccess } from '@/types/student';
 
 export const studentService = {
     /** Rich aggregated profile for the admin student-detail page. */
@@ -71,6 +71,12 @@ export const studentService = {
             console.error('Error fetching dashboard:', error);
             throw error;
         }
+    },
+
+    /** The caller's resolved access — the same rules the backend enforces. */
+    getMyAccess: async (): Promise<MyAccess> => {
+        const response = await api.get('/students/me/access');
+        return response.data.data;
     },
 
     getStudentCourses: async (studentId: string) => {

@@ -11,6 +11,7 @@ import {
     BookOpen,
     LayoutList,
     ListChecks,
+    Lock,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { progressService } from '@/services/api/progress.api';
@@ -75,6 +76,7 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
     // Problem-solving courses are rendered by a dedicated tracker.
     const [isProblemCourse, setIsProblemCourse] = useState(false);
     const [leftOpen, setLeftOpen] = useState(true);
+    const [accessDenied, setAccessDenied] = useState<{ title?: string } | null>(null);
 
     const lessons = useMemo(() => outline?.lessons ?? [], [outline]);
     const selectedIndex = lessons.findIndex((l) => l.id === selectedId);
@@ -121,7 +123,12 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                         ? OVERVIEW
                         : (firstIncomplete || nextOutline.lessons[0])?.id ?? null
                 );
-            } catch (error) {
+            } catch (error: any) {
+                // Not entitled: show an explanation and a way to enrol, not an error.
+                if (error?.response?.data?.error?.code === 'COURSE_ACCESS_REQUIRED') {
+                    setAccessDenied({ title: error.response.data.error.details?.title });
+                    return;
+                }
                 console.error('Error fetching course data:', error);
                 toast.error('Failed to load course content. Please try again.');
             } finally {
@@ -163,6 +170,31 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
     };
 
     if (authLoading || loading) return <LoadingState />;
+
+    if (accessDenied) {
+        return (
+            <div className="min-h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-950 flex items-center justify-center px-4">
+                <div className="max-w-md text-center space-y-4">
+                    <Lock className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto" aria-hidden="true" />
+                    <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                        You&apos;re not enrolled{accessDenied.title ? ` in ${accessDenied.title}` : ' in this course'}
+                    </h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Enroll in the course, or in a bundle that includes it, to open the lessons.
+                        If you&apos;ve already paid, it can take a moment to appear — refresh, or contact support.
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                        <button onClick={() => router.push('/courses')} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium text-sm">
+                            Browse courses
+                        </button>
+                        <button onClick={() => router.push('/student')} className="px-5 py-2.5 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors font-medium text-sm">
+                            Back to Dashboard
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (isProblemCourse) return <ProblemTracker courseId={courseId} />;
 

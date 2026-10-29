@@ -9,18 +9,16 @@ import {
     AlertCircle,
     X,
     PartyPopper,
-    ChevronRight,
     Flame,
     Play,
     RotateCcw,
     Award,
     Layers,
-    Clock,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { studentService } from '@/services/api/student.api';
 import { useAuth } from '@/hooks/use-auth';
-import { GroupDocumentLink } from '@/components/courses/GroupDocumentLink';
+import { BundleCard } from './bundle-card';
 
 export function StudentDashboard() {
     const { user, isLoading: authLoading } = useAuth();
@@ -28,7 +26,8 @@ export function StudentDashboard() {
     const searchParams = useSearchParams();
     const [showSuccessMessage, setShowSuccessMessage] = useState(searchParams.get('success') === 'true');
     const [filterStatus, setFilterStatus] = useState<'all' | 'in-progress' | 'completed' | 'not-started'>('all');
-    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    // Bundles show their courses by default; this tracks the ones the student folded.
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -68,11 +67,10 @@ export function StudentDashboard() {
         fetchDashboard();
     }, [user?.email, authLoading]);
 
-    const toggleGroup = (groupId: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        setExpandedGroups(prev => {
+    const toggleGroup = (groupId: string) => {
+        setCollapsedGroups(prev => {
             const next = new Set(prev);
-            next.has(groupId) ? next.delete(groupId) : next.add(groupId);
+            if (!next.delete(groupId)) next.add(groupId);
             return next;
         });
     };
@@ -100,15 +98,12 @@ export function StudentDashboard() {
         return sum + (item.completedSections || 0);
     }, 0);
 
-    // Find best "continue learning" candidate
-    const continueCourse = displayItems.find((item: any) => {
-        const status = item.status || '';
-        if (item.type === 'group') return false; // prefer individual courses
-        return status === 'in-progress';
-    }) || displayItems.find((item: any) => {
-        if (item.type === 'group') return false;
-        return item.status === 'not-started';
-    }) || displayItems[0];
+    // "Continue learning" picks from every course, bundle courses in their
+    // bundle's order, so it never lands on a bundle (which has no course page).
+    const allCourses: any[] = displayItems.flatMap((item: any) => (item.type === 'group' ? item.courses || [] : [item]));
+    const continueCourse = allCourses.find((c: any) => c.status === 'in-progress')
+        || allCourses.find((c: any) => c.status === 'not-started')
+        || allCourses[0];
 
     // Filter display items
     const filteredItems = displayItems.filter((item: any) => {
@@ -318,84 +313,19 @@ export function StudentDashboard() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {filteredItems.map((item: any) => {
                                 const isGroup = item.type === 'group';
-                                const isExpanded = expandedGroups.has(item.id);
+                                const isCollapsed = collapsedGroups.has(item.id);
                                 const isCompleted = item.status === 'completed';
                                 const isInProgress = item.status === 'in-progress';
 
                                 if (isGroup) {
                                     return (
-                                        <div key={item.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:shadow-md transition-shadow col-span-1">
-                                            <div className="p-5">
-                                                {/* Bundle header */}
-                                                <div className="flex items-start gap-3 mb-4">
-                                                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0">
-                                                        {item.image_url ? (
-                                                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <Layers className="w-5 h-5 text-indigo-500" />
-                                                        )}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-1.5 mb-1">
-                                                            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
-                                                                Bundle
-                                                            </span>
-                                                        </div>
-                                                        <h3 className="font-bold text-gray-900 dark:text-white text-sm leading-snug line-clamp-2">
-                                                            {item.name}
-                                                        </h3>
-                                                    </div>
-                                                </div>
-
-                                                {/* Progress */}
-                                                <div className="mb-3">
-                                                    <div className="flex justify-between text-xs mb-1.5">
-                                                        <span className="text-gray-500 dark:text-gray-400">Progress</span>
-                                                        <span className="font-semibold text-gray-700 dark:text-gray-300">{item.progress || 0}%</span>
-                                                    </div>
-                                                    <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-indigo-500 rounded-full transition-all"
-                                                            style={{ width: `${item.progress || 0}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                {/* Bundle reference document — a plain
-                                                    external link, no processing. Absent
-                                                    for bundles without one. */}
-                                                <GroupDocumentLink url={item.document_url} className="mb-3" />
-
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                                                        {item.courses?.length || 0} courses
-                                                    </span>
-                                                    <button
-                                                        onClick={(e) => toggleGroup(item.id, e)}
-                                                        className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                                                    >
-                                                        {isExpanded ? 'Hide' : 'View'} courses
-                                                        <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {isExpanded && (
-                                                <div className="border-t border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800">
-                                                    {(item.courses || []).map((sub: any) => (
-                                                        <button
-                                                            key={sub.id}
-                                                            onClick={() => router.push(`/student/courses/${sub.id}`)}
-                                                            className="w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors text-left"
-                                                        >
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
-                                                            <span className="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">{sub.title}</span>
-                                                            <span className="text-xs font-semibold text-gray-400">{sub.progress || 0}%</span>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
+                                        <BundleCard
+                                            key={item.id}
+                                            bundle={item}
+                                            collapsed={isCollapsed}
+                                            onToggle={() => toggleGroup(item.id)}
+                                            onOpenCourse={(courseId) => router.push(`/student/courses/${courseId}`)}
+                                        />
                                     );
                                 }
 

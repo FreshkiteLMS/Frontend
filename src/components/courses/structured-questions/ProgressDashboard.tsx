@@ -9,6 +9,7 @@ import {
     QUESTION_STATUS_LABELS,
     QUESTION_STATUSES,
     QUESTION_TYPE_LABELS,
+    type AudioMarksSummary,
     type CourseProgressSummary,
     type ProgressMetrics,
     type QuestionStatus,
@@ -16,8 +17,9 @@ import {
     type StudentProgressDetail,
     type StudentProgressRow,
 } from '@/types/structured-questions';
-import { formatDateTime, percent } from '@/lib/question-progress';
+import { formatDateTime, formatMarks, percent } from '@/lib/question-progress';
 import { QuestionStatusBadge } from './QuestionStatusBadge';
+import { ProgressMatrix } from './ProgressMatrix';
 import { Pagination } from './Pagination';
 import { useDebouncedValue } from './useDebouncedValue';
 
@@ -36,13 +38,28 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
 
 const fraction = (m: ProgressMetrics) => `${m.finished}/${m.total}`;
 
+function MarksSummaryCell({ marks }: { marks: AudioMarksSummary }) {
+    if (marks.scored === 0) return <span className="text-gray-400">No scores</span>;
+    return (
+        <span className="whitespace-nowrap">
+            <span className="font-semibold tabular-nums">{formatMarks(marks.obtained, marks.max)}</span>
+            {marks.percent !== null && <span className="text-gray-400"> ({percent(marks.percent)})</span>}
+            {marks.unscored > 0 && <span className="block text-[11px] text-gray-400">{marks.unscored} unscored</span>}
+        </span>
+    );
+}
+
+type View = 'students' | 'grid';
+
 /**
  * Instructor/admin dashboard for a Structured Course: course summary, a
- * server-paginated student table with filters, a per-student detail view and
- * assessment (PASS/FAIL or override) with notes.
+ * server-paginated student table with filters, a student × question grid,
+ * a per-student detail view and assessment (PASS/FAIL or override) with notes.
+ * `embedded` drops the page chrome when shown inside the admin progress hub.
  */
-export function ProgressDashboard({ courseId, initialStudentId = null }: { courseId: string; initialStudentId?: string | null }) {
+export function ProgressDashboard({ courseId, initialStudentId = null, embedded = false }: { courseId: string; initialStudentId?: string | null; embedded?: boolean }) {
     const router = useRouter();
+    const [view, setView] = useState<View>('students');
     const [summary, setSummary] = useState<CourseProgressSummary | null>(null);
     const [rows, setRows] = useState<StudentProgressRow[]>([]);
     const [total, setTotal] = useState(0);
@@ -102,22 +119,30 @@ export function ProgressDashboard({ courseId, initialStudentId = null }: { cours
         loadRows();
     };
 
+    const exportButton = (
+        <button type="button" onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+            <Download className="w-4 h-4" aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export CSV'}
+        </button>
+    );
+
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-            <div>
-                <button onClick={() => router.push(`/admin/courses/${courseId}/preview`)} className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4">
-                    <ArrowLeft className="w-5 h-5" aria-hidden="true" /> Back to course
-                </button>
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Student progress</h1>
-                        <p className="text-gray-600 dark:text-gray-400">{summary?.courseTitle ?? 'Questions & Assignments'}</p>
-                    </div>
-                    <button type="button" onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
-                        <Download className="w-4 h-4" aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export CSV'}
+        <div className={embedded ? 'space-y-6' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6'}>
+            {embedded ? (
+                <div className="flex justify-end">{exportButton}</div>
+            ) : (
+                <div>
+                    <button onClick={() => router.push(`/admin/courses/${courseId}/preview`)} className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4">
+                        <ArrowLeft className="w-5 h-5" aria-hidden="true" /> Back to course
                     </button>
+                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Student progress</h1>
+                            <p className="text-gray-600 dark:text-gray-400">{summary?.courseTitle ?? 'Questions & Assignments'}</p>
+                        </div>
+                        {exportButton}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {summary && (
                 <>
@@ -139,6 +164,27 @@ export function ProgressDashboard({ courseId, initialStudentId = null }: { cours
             )}
 
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+                <div role="tablist" aria-label="Progress view" className="mb-4 inline-flex rounded-lg bg-gray-100 dark:bg-gray-900 p-1">
+                    {([['students', 'By student'], ['grid', 'Question grid']] as [View, string][]).map(([id, label]) => (
+                        <button
+                            key={id}
+                            type="button"
+                            role="tab"
+                            aria-selected={view === id}
+                            onClick={() => setView(id)}
+                            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                                view === id ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+
+                {view === 'grid' ? (
+                    <ProgressMatrix courseId={courseId} onSelectStudent={setSelected} />
+                ) : (
+                <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                     <div className="relative">
                         <label htmlFor="pd-search" className="sr-only">Search students</label>
@@ -191,6 +237,7 @@ export function ProgressDashboard({ courseId, initialStudentId = null }: { cours
                                     <th scope="col" className="py-2 pr-4">Finished</th>
                                     <th scope="col" className="py-2 pr-4">Audio</th>
                                     <th scope="col" className="py-2 pr-4">Assignments</th>
+                                    <th scope="col" className="py-2 pr-4">Audio marks</th>
                                     <th scope="col" className="py-2 pr-2 text-right">Not started</th>
                                     <th scope="col" className="py-2 pr-2 text-right">In progress</th>
                                     <th scope="col" className="py-2 pr-2 text-right">Completed</th>
@@ -211,6 +258,7 @@ export function ProgressDashboard({ courseId, initialStudentId = null }: { cours
                                         <td className="py-2 pr-4 whitespace-nowrap">{fraction(r.overall)} <span className="text-gray-400">({percent(r.overall.percentFinished)})</span></td>
                                         <td className="py-2 pr-4 whitespace-nowrap">{fraction(r.audio)}</td>
                                         <td className="py-2 pr-4 whitespace-nowrap">{fraction(r.assignment)}</td>
+                                        <td className="py-2 pr-4"><MarksSummaryCell marks={r.audioMarks} /></td>
                                         <td className="py-2 pr-2 text-right tabular-nums">{r.overall.counts.NOT_STARTED}</td>
                                         <td className="py-2 pr-2 text-right tabular-nums">{r.overall.counts.IN_PROGRESS}</td>
                                         <td className="py-2 pr-2 text-right tabular-nums">{r.overall.counts.COMPLETED}</td>
@@ -224,6 +272,8 @@ export function ProgressDashboard({ courseId, initialStudentId = null }: { cours
                     </div>
                 )}
                 <Pagination page={page} totalPages={totalPages} total={total} onPage={setPage} noun="students" />
+                </>
+                )}
             </div>
 
             {selected && (
@@ -304,10 +354,15 @@ function StudentDetailDrawer({
 
                 {detail && (
                     <>
-                        <div className="grid grid-cols-3 gap-3 mb-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                             <Stat label="Overall finished" value={fraction(detail.metrics.overall)} sub={`${detail.metrics.overall.counts.PASS} pass · ${detail.metrics.overall.counts.FAIL} fail`} />
                             <Stat label="Audio" value={fraction(detail.metrics.audio)} />
                             <Stat label="Assignments" value={fraction(detail.metrics.assignment)} />
+                            <Stat
+                                label="Audio marks"
+                                value={detail.metrics.audioMarks.scored ? formatMarks(detail.metrics.audioMarks.obtained, detail.metrics.audioMarks.max) : '—'}
+                                sub={`${detail.metrics.audioMarks.scored} scored · ${detail.metrics.audioMarks.unscored} unscored`}
+                            />
                         </div>
 
                         <div className="mb-3">
@@ -334,6 +389,11 @@ function StudentDetailDrawer({
                                             {q.progress.assessmentNotes && <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">Notes: {q.progress.assessmentNotes}</p>}
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            {q.type === 'audio_question' && (
+                                                <span className={`text-xs tabular-nums ${q.progress.marksObtained !== null ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-400'}`}>
+                                                    {q.progress.marksObtained !== null ? formatMarks(q.progress.marksObtained, q.progress.marksMax) : `— / ${formatMarks(q.maxMarks ?? 10, null)}`}
+                                                </span>
+                                            )}
                                             <QuestionStatusBadge status={q.progress.status} />
                                             <button
                                                 type="button"
@@ -378,8 +438,13 @@ function StudentDetailDrawer({
                                         const title = detail.questions.find(q => q.id === h.questionId)?.title ?? 'Question';
                                         return (
                                             <li key={h.id}>
-                                                {formatDateTime(h.createdAt)} — {title}: {QUESTION_STATUS_LABELS[h.fromStatus]} → {QUESTION_STATUS_LABELS[h.toStatus]}
-                                                {' '}({h.kind === 'self_update' ? 'student' : `${h.kind} by ${h.actorRole}`}){h.notes ? ` — “${h.notes}”` : ''}
+                                                {formatDateTime(h.createdAt)} — {title}:{' '}
+                                                {h.kind === 'self_score' ? (
+                                                    <>{h.marksObtained != null ? `scored ${formatMarks(h.marksObtained, h.marksMax)}` : 'cleared score'}{h.fromStatus !== h.toStatus ? ` (${QUESTION_STATUS_LABELS[h.fromStatus]} → ${QUESTION_STATUS_LABELS[h.toStatus]})` : ''} (student)</>
+                                                ) : (
+                                                    <>{QUESTION_STATUS_LABELS[h.fromStatus]} → {QUESTION_STATUS_LABELS[h.toStatus]}
+                                                    {' '}({h.kind === 'self_update' ? 'student' : `${h.kind} by ${h.actorRole}`}){h.notes ? ` — “${h.notes}”` : ''}</>
+                                                )}
                                             </li>
                                         );
                                     })}

@@ -11,14 +11,15 @@ import {
     PlusCircle,
     Upload,
     Send,
-    TrendingUp,
     BarChart3,
     ChevronRight,
     Edit,
     Trash2,
     Search,
     ShieldCheck,
-    ListChecks
+    ListChecks,
+    AlertTriangle,
+    IndianRupee
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
@@ -32,7 +33,49 @@ import { Batch } from '@/types/batch';
 import { Course, CourseGroup } from '@/types/course';
 import { Student } from '@/types/student';
 
-// Removed props interface as we handle navigation internally now
+const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
+interface MetricCardProps {
+    icon: React.ComponentType<{ className?: string }>;
+    tone: string;
+    label: string;
+    value: React.ReactNode;
+    detail?: React.ReactNode;
+    loading: boolean;
+    /** Omit for a read-only tile (no destination page). */
+    onClick?: () => void;
+    highlight?: boolean;
+}
+
+/** A clickable KPI tile. Values always come from the API — never placeholders. */
+function MetricCard({ icon: Icon, tone, label, value, detail, loading, onClick, highlight }: MetricCardProps) {
+    const Tag = onClick ? 'button' : 'div';
+    return (
+        <Tag
+            {...(onClick ? { type: 'button' as const, onClick } : {})}
+            className={`text-left bg-white dark:bg-gray-800 rounded-xl p-5 border shadow-sm ${onClick ? 'hover:shadow-md transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500' : ''} ${
+                highlight ? 'border-amber-300 dark:border-amber-600' : 'border-gray-100 dark:border-gray-700'
+            }`}
+        >
+            <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-gray-600 dark:text-gray-400">{label}</p>
+                <span className={`p-2 rounded-lg ${tone}`}><Icon className="w-5 h-5" /></span>
+            </div>
+            {loading ? (
+                <div className="space-y-2" aria-hidden="true">
+                    <div className="h-7 w-16 rounded bg-gray-100 dark:bg-gray-700 animate-pulse" />
+                    <div className="h-3 w-24 rounded bg-gray-100 dark:bg-gray-700 animate-pulse" />
+                </div>
+            ) : (
+                <>
+                    <p className="text-2xl font-semibold text-gray-900 dark:text-white tabular-nums">{value}</p>
+                    {detail && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{detail}</p>}
+                </>
+            )}
+        </Tag>
+    );
+}
+
 export function AdminDashboard() {
     const router = useRouter();
     const [selectedTab, setSelectedTab] = useState<'overview' | 'batches' | 'students' | 'courses'>('overview');
@@ -40,6 +83,7 @@ export function AdminDashboard() {
     const [batches, setBatches] = useState<Batch[]>([]);
     const [students, setStudents] = useState<Student[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchType, setSearchType] = useState('q'); // 'q' is general search
 
@@ -71,8 +115,10 @@ export function AdminDashboard() {
             setStudentsMeta(studentsResult.meta);
             setCourses(coursesResult.data);
             setCoursesMeta(coursesResult.meta);
+            setLoadError(null);
         } catch (error) {
             console.error('Failed to fetch dashboard data:', error);
+            setLoadError('Some dashboard data could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -94,8 +140,10 @@ export function AdminDashboard() {
             setStudentsMeta(studentsResult.meta);
             setCourses(coursesResult.data);
             setCoursesMeta(coursesResult.meta);
+            setLoadError(null);
         } catch (error) {
             console.error('Failed to fetch dashboard data:', error);
+            setLoadError('Some dashboard data could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -266,6 +314,13 @@ export function AdminDashboard() {
 
     const quickActions = [
         {
+            icon: BarChart3,
+            label: 'Student Progress',
+            description: 'Questions, assignments & scores',
+            color: 'bg-sky-600',
+            action: () => handleNavigate('/admin/progress')
+        },
+        {
             icon: PlusCircle,
             label: 'New Course',
             description: 'Create new course',
@@ -295,8 +350,8 @@ export function AdminDashboard() {
         },
         {
             icon: BookOpen,
-            label: 'New Group',
-            description: 'Bundle courses',
+            label: 'New Bundle',
+            description: 'Group courses into a bundle',
             color: 'bg-rose-500',
             action: () => handleNavigate('/admin/course-groups/create')
         }
@@ -335,85 +390,75 @@ export function AdminDashboard() {
                 </button>
             </div>
 
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => setSelectedTab('batches')}>
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                            <Layers className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                        </div>
-                        <TrendingUp className="w-5 h-5 text-green-500" />
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-400 mb-1">Total Batches</p>
-                    <div className="flex items-baseline gap-2">
-                        {loading ? (
-                            <span className="text-gray-400 text-sm">Loading...</span>
-                        ) : (
-                            <>
-                                <span className="text-gray-900 dark:text-white text-2xl font-semibold">{stats?.totalBatches || 0}</span>
-                                <span className="text-green-600 text-sm">+2 this month</span>
-                            </>
-                        )}
-                    </div>
+            {loadError && (
+                <div role="alert" className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-800 dark:text-red-300">
+                    <span className="inline-flex items-center gap-2"><AlertTriangle className="w-4 h-4" aria-hidden="true" /> {loadError}</span>
+                    <button type="button" onClick={fetchData} className="font-semibold underline">Retry</button>
                 </div>
+            )}
 
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => setSelectedTab('students')}>
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                            <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                        </div>
-                        <TrendingUp className="w-5 h-5 text-green-500" />
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-400 mb-1">Total Students</p>
-                    <div className="flex items-baseline gap-2">
-                        {loading ? (
-                            <span className="text-gray-400 text-sm">Loading...</span>
-                        ) : (
-                            <>
-                                <span className="text-gray-900 dark:text-white text-2xl font-semibold">{stats?.totalStudents || 0}</span>
-                                <span className="text-green-600 text-sm">+12 this month</span>
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => setSelectedTab('courses')}>
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                            <BookOpen className="w-6 h-6 text-green-600 dark:text-green-400" />
-                        </div>
-                        <BarChart3 className="w-5 h-5 text-blue-500" />
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-400 mb-1">Total Courses</p>
-                    <div className="flex items-baseline gap-2">
-                        {loading ? (
-                            <span className="text-gray-400 text-sm">Loading...</span>
-                        ) : (
-                            <>
-                                <span className="text-gray-900 dark:text-white text-2xl font-semibold">{stats?.totalCourses || 0}</span>
-                                <span className="text-blue-600 dark:text-blue-400 text-sm">{stats?.activeCourses || 0} active</span>
-                            </>
-                        )}
-                    </div>
-                </div>
+            {/* Key Metrics — all counted server-side from stored records */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                <MetricCard
+                    icon={Users}
+                    tone="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400"
+                    label="Students"
+                    value={stats?.totalStudents ?? 0}
+                    detail={stats?.newStudentsLast30Days !== undefined ? `${stats.newStudentsLast30Days} joined in the last 30 days` : undefined}
+                    loading={loading && !stats}
+                    onClick={() => setSelectedTab('students')}
+                />
+                <MetricCard
+                    icon={BookOpen}
+                    tone="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"
+                    label="Courses"
+                    value={stats?.totalCourses ?? 0}
+                    detail={`${stats?.activeCourses ?? 0} published`}
+                    loading={loading && !stats}
+                    onClick={() => setSelectedTab('courses')}
+                />
+                <MetricCard
+                    icon={Layers}
+                    tone="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                    label="Batches"
+                    value={stats?.totalBatches ?? 0}
+                    detail={stats?.newBatchesLast30Days !== undefined ? `${stats.newBatchesLast30Days} created in the last 30 days` : undefined}
+                    loading={loading && !stats}
+                    onClick={() => setSelectedTab('batches')}
+                />
+                <MetricCard
+                    icon={ShieldCheck}
+                    tone="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+                    label="Pending approvals"
+                    value={stats?.pendingApprovals ?? 0}
+                    detail={(stats?.pendingApprovals ?? 0) > 0 ? 'Review enrollment requests →' : 'Nothing waiting'}
+                    highlight={(stats?.pendingApprovals ?? 0) > 0}
+                    loading={loading && !stats}
+                    onClick={() => handleNavigate('/admin/enrollment-requests')}
+                />
+                <MetricCard
+                    icon={IndianRupee}
+                    tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+                    label="Revenue, last 30 days"
+                    value={inr.format(stats?.revenueLast30DaysInr ?? 0)}
+                    detail={`${stats?.paidOrdersLast30Days ?? 0} paid orders`}
+                    loading={loading && !stats}
+                />
             </div>
 
             {/* Quick Actions */}
             <div className="mb-8">
                 <h3 className="text-gray-900 dark:text-white text-lg font-semibold mb-4">Quick Actions</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                    {quickActions.map((action, index) => (
+                    {quickActions.map((action) => (
                         <button
-                            key={index}
+                            key={action.label}
                             type="button"
                             onClick={action.action}
-                            className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all hover:-translate-y-0.5 text-left"
+                            className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all hover:-translate-y-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                         >
-                            <div className={`${action.color} w-12 h-12 rounded-lg flex items-center justify-center mb-3`}>
-                                <action.icon className="w-6 h-6 text-white" />
+                            <div className={`${action.color} w-11 h-11 rounded-lg flex items-center justify-center mb-3`}>
+                                <action.icon className="w-5 h-5 text-white" />
                             </div>
                             <p className="text-gray-900 dark:text-white text-sm font-medium mb-1">{action.label}</p>
                             <p className="text-gray-500 dark:text-gray-400 text-xs">{action.description}</p>

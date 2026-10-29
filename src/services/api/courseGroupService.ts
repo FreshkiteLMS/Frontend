@@ -1,6 +1,13 @@
 import api from './axios';
 import { CourseGroup } from '@/types/course';
 
+export interface BundleCourseRef {
+    _id: string;
+    id?: string;
+    title: string;
+    status?: string;
+}
+
 export const courseGroupService = {
     /**
      * Fetch all groups with their courses
@@ -64,5 +71,31 @@ export const courseGroupService = {
     removeCourseFromGroup: async (groupId: string, courseId: string) => {
         const response = await api.delete(`/course-groups/${groupId}/courses/${courseId}`);
         return response.data;
+    },
+
+    /**
+     * The bundle's courses in the order students see them (admin).
+     */
+    getOrderedCourses: async (groupId: string): Promise<BundleCourseRef[]> => {
+        const response = await api.get(`/course-groups/${groupId}/courses`);
+        return response.data.data;
+    },
+
+    /**
+     * Save the order students see the bundle's courses in. Courses left out
+     * keep their relative order after the listed ones.
+     */
+    reorderCourses: async (groupId: string, courseIds: string[]): Promise<BundleCourseRef[]> => {
+        const response = await api.put(`/course-groups/${groupId}/courses/order`, { courseIds });
+        return response.data.data;
+    },
+
+    /**
+     * Re-run the enrollment backfill for everyone who holds this bundle
+     * (idempotent; for retrying after a reported failure).
+     */
+    syncAccess: async (groupId: string): Promise<{ holders: number; enrolled: number; skipped: number; failed: number }> => {
+        const response = await api.post(`/course-groups/${groupId}/sync-access`);
+        return response.data.data;
     },
 };

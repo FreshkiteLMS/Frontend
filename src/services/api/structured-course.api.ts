@@ -4,6 +4,7 @@ import type {
     CourseQuestion,
     MySummary,
     Paginated,
+    ProgressMatrix,
     QuestionImport,
     QuestionStatus,
     StatusChangeResult,
@@ -112,6 +113,11 @@ export const structuredCourseService = {
         const res = await api.put(`${base(courseId)}/my/questions/${questionId}/status`, { status, expectedVersion });
         return res.data.data;
     },
+    /** Save (or clear with null) the caller's self-assessed score for an audio question. */
+    setMyScore: async (courseId: string, questionId: string, marksObtained: number | null, expectedVersion: number): Promise<StatusChangeResult> => {
+        const res = await api.put(`${base(courseId)}/my/questions/${questionId}/score`, { marksObtained, expectedVersion });
+        return res.data.data;
+    },
 
     // ── Instructor reporting & assessment ──
     progressSummary: async (courseId: string): Promise<CourseProgressSummary> => {
@@ -120,6 +126,10 @@ export const structuredCourseService = {
     },
     progressStudents: async (courseId: string, params: QueryParams): Promise<Paginated<StudentProgressRow> & { totalQuestions: number }> => {
         const res = await api.get(`${base(courseId)}/progress/students`, { params: clean(params) });
+        return res.data;
+    },
+    progressMatrix: async (courseId: string, params: QueryParams): Promise<ProgressMatrix> => {
+        const res = await api.get(`${base(courseId)}/progress/matrix`, { params: clean(params) });
         return res.data;
     },
     studentDetail: async (courseId: string, userId: string): Promise<StudentProgressDetail> => {

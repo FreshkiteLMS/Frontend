@@ -2,8 +2,10 @@
 
 import { Course } from '@/types/course';
 import { Clock, BarChart, Check, BookOpen } from 'lucide-react';
+import Link from 'next/link';
 import PaymentButton from '../payment/PaymentButton';
 import { useAuth } from '@/hooks/use-auth';
+import { useCourseAccess } from '@/hooks/use-course-access';
 
 interface CourseCardProps {
     course: Course;
@@ -15,7 +17,11 @@ interface CourseCardProps {
 
 export function CourseCard({ course, compact = false, showSubContent = false, subContent = [], isOwned = false }: CourseCardProps) {
     const { user } = useAuth();
+    const access = useCourseAccess();
     const isCohort = (course as any).type === 'cohort' || (course as any).is_group;
+    // Direct, batch, bundle or full access — resolved by the server.
+    const owned = isOwned || access.hasCourse({ id: course.id, _id: (course as any)._id });
+    const openHref = `/student/courses/${course.id || (course as any)._id}`;
 
     if (compact) {
         return (
@@ -131,10 +137,15 @@ export function CourseCard({ course, compact = false, showSubContent = false, su
                             ₹{(course.price || 0).toLocaleString()}
                         </span>
                     </div>
-                    {isOwned ? (
-                        <div className="w-full flex items-center justify-center gap-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-bold text-xs py-2.5 rounded-xl border border-green-200 dark:border-green-800">
-                            <Check className="w-3.5 h-3.5" /> Enrolled
-                        </div>
+                    {owned ? (
+                        <Link
+                            href={openHref}
+                            className="w-full flex items-center justify-center gap-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 font-bold text-xs py-2.5 rounded-xl border border-green-200 dark:border-green-800 transition-colors"
+                        >
+                            <Check className="w-3.5 h-3.5" aria-hidden="true" /> Enrolled · Open course
+                        </Link>
+                    ) : !access.ready ? (
+                        <div className="w-full h-[38px] rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" aria-label="Checking your access" />
                     ) : (
                         <PaymentButton
                             amount={(course.price || 0) * 100}

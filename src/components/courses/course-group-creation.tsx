@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, ArrowRight, CheckCircle2, Search, X, Plus, Layers, BookOpen, DollarSign, FileText, Link as LinkIcon, Loader2, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Search, X, Plus, Layers, BookOpen, DollarSign, FileText, Link as LinkIcon, Loader2, Check, ChevronUp, ChevronDown, GripVertical, ListOrdered } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { courseGroupService } from '@/services/api/courseGroupService';
+import { courseGroupService, BundleCourseRef } from '@/services/api/courseGroupService';
 import { courseService } from '@/services/api/course.api';
 import { Course } from '@/types/course';
 import { isValidDocumentUrl, normalizeDocumentUrlInput } from '@/lib/document-url';
@@ -52,7 +52,12 @@ export function CourseGroupCreation() {
     const [courses, setCourses] = useState<Course[]>([]);
     const [loadingCourses, setLoadingCourses] = useState(false);
     const [search, setSearch] = useState('');
-    const [selected, setSelected] = useState<Set<string>>(new Set());
+    // Selected course _ids, in the order students will see them.
+    const [order, setOrder] = useState<string[]>([]);
+    const selected = useMemo(() => new Set(order), [order]);
+    // Members as stored (embedded list ∪ Course.group), for titles before the catalog loads.
+    const [existing, setExisting] = useState<BundleCourseRef[]>([]);
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [adding, setAdding] = useState(false);
     const [addError, setAddError] = useState<string | null>(null);
     const [addedCount, setAddedCount] = useState(0);
@@ -76,14 +81,10 @@ export function CourseGroupCreation() {
                         status: (group.status as 'active' | 'inactive') || 'active'
                     });
                     setCreatedGroupId(editId);
-                    if (group.courses && group.courses.length > 0) {
-                        // courseId is always a MongoDB _id (ObjectId stored as string)
-                        setSelected(new Set(group.courses.map(c =>
-                            typeof c.courseId === 'string'
-                                ? c.courseId
-                                : String((c.courseId as any)._id ?? (c.courseId as any).id ?? c.courseId)
-                        )));
-                    }
+                    // Every member, however it was linked, in the current display order.
+                    const members = await courseGroupService.getOrderedCourses(editId);
+                    setExisting(members);
+                    setOrder(members.map(m => String(m._id)));
                 } catch (err) {
                     console.error('Failed to fetch group details:', err);
                     toast.error('Failed to load group details. Please try again.');
@@ -155,12 +156,25 @@ export function CourseGroupCreation() {
 
     /* toggle course selection */
     const toggleCourse = (id: string) => {
-        setSelected(prev => {
-            const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+        // Newly picked courses go to the end of the order.
+        setOrder(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    /* reorder the selected courses */
+    const moveCourse = (from: number, to: number) => {
+        setOrder(prev => {
+            if (to < 0 || to >= prev.length || from === to) return prev;
+            const next = [...prev];
+            const [moved] = next.splice(from, 1);
+            next.splice(to, 0, moved);
             return next;
         });
     };
+
+    const titleOf = (id: string) =>
+        courses.find(c => String(c._id) === id)?.title
+        ?? existing.find(m => String(m._id) === id)?.title
+        ?? 'Untitled course';
 
     /* Step 2 submit — add selected courses */
     const handleAddCourses = async () => {
@@ -169,35 +183,56 @@ export function CourseGroupCreation() {
         setAddError(null);
         let count = 0;
         try {
-            // In edit mode, we might want to sync the whole list
-            // For simplicity, let's keep the current add logic if the service only supports adding one by one
-            // Ideally backend would have a "sync courses" endpoint
-
-            // If editing, first remove all current courses then add new selection
+            // Editing applies only the difference. Removing everything and
+            // re-adding would briefly empty the bundle for students who own it.
+            // Existing bundle holders get newly added courses automatically.
+            const existingIds = new Set<string>();
             if (editId) {
-                const group = await courseGroupService.getGroupById(editId);
-                for (const existing of group.courses) {
-                    const eId = typeof existing.courseId === 'string'
-                        ? existing.courseId
-                        : String((existing.courseId as any)._id ?? (existing.courseId as any).id ?? existing.courseId);
-                    await courseGroupService.removeCourseFromGroup(editId, eId);
+                const members = await courseGroupService.getOrderedCourses(editId);
+                for (const m of members) existingIds.add(String(m._id));
+                for (const eId of existingIds) {
+                    if (!selected.has(eId)) await courseGroupService.removeCourseFromGroup(editId, eId);
                 }
             }
 
-            for (const courseId of selected) {
+            for (const courseId of order) {
                 // courseId here is always the MongoDB _id string
+                if (existingIds.has(courseId)) { count++; continue; }
                 const course = courses.find(c => String(c._id) === courseId);
                 if (!course) continue;
                 await courseGroupService.addCourseToGroup(createdGroupId, courseId, course.title);
                 count++;
             }
+            // Membership is settled; now save the order students see.
+            if (order.length > 0) await courseGroupService.reorderCourses(createdGroupId, order);
             setAddedCount(count);
             // Brief success pause then redirect
             setTimeout(() => router.push('/admin'), 1500);
         } catch (err: any) {
-            setAddError(err?.response?.data?.message || 'Some courses could not be added. Please try again.');
+            setAddError(err?.response?.data?.error?.message || err?.response?.data?.message || 'Some courses could not be saved. Please try again.');
         } finally {
             setAdding(false);
+        }
+    };
+
+    /* Retry the bundle → enrollment backfill (idempotent). */
+    const [syncing, setSyncing] = useState(false);
+    const handleSyncAccess = async () => {
+        if (!editId) return;
+        setSyncing(true);
+        try {
+            const r = await courseGroupService.syncAccess(editId);
+            if (r.failed > 0) {
+                toast.error(`Synced ${r.holders} student(s), but ${r.failed} enrollment(s) failed. Try again in a moment.`);
+            } else {
+                toast.success(r.enrolled > 0
+                    ? `Added ${r.enrolled} missing course enrollment(s) for ${r.holders} student(s).`
+                    : `All ${r.holders} student(s) who own this bundle already have every course.`);
+            }
+        } catch (err: any) {
+            toast.error(err?.response?.data?.error?.message || 'Could not sync access. Please try again.');
+        } finally {
+            setSyncing(false);
         }
     };
 
@@ -237,6 +272,23 @@ export function CourseGroupCreation() {
                 <p className="text-gray-500 mt-1">
                     {editId ? 'Update group details and courses.' : 'Bundle courses into a group to sell or organise together.'}
                 </p>
+                {editId && (
+                    <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                        <p>
+                            Students who already own this bundle get any course you add automatically — no repurchase needed.
+                            Removing a course never revokes access a student already has.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={handleSyncAccess}
+                            disabled={syncing}
+                            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                        >
+                            {syncing ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Check className="w-4 h-4" aria-hidden="true" />}
+                            {syncing ? 'Syncing…' : 'Sync student access'}
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Step pills */}
@@ -387,6 +439,15 @@ export function CourseGroupCreation() {
                         {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                         {creating ? (editId ? 'Updating...' : 'Creating...') : (editId ? 'Update & Manage Courses' : 'Create Group & Add Courses')}
                     </button>
+                    {editId && (
+                        <button
+                            type="button"
+                            onClick={() => setStep(2)}
+                            className="w-full text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                        >
+                            Skip to courses &amp; order →
+                        </button>
+                    )}
                 </form>
             )}
 
@@ -395,17 +456,83 @@ export function CourseGroupCreation() {
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
                     <div className="flex items-center justify-between mb-6">
                         <div>
-                            <h2 className="text-lg font-bold text-gray-900">Select Courses to Add</h2>
+                            <h2 className="text-lg font-bold text-gray-900">{editId ? 'Courses in this Bundle' : 'Select Courses to Add'}</h2>
                             <p className="text-sm text-gray-500 mt-0.5">
                                 {selected.size > 0 ? `${selected.size} course${selected.size > 1 ? 's' : ''} selected` : 'Pick one or more courses to include in the group'}
                             </p>
                         </div>
                         {selected.size > 0 && (
-                            <button onClick={() => setSelected(new Set())} className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
+                            <button onClick={() => setOrder([])} className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
                                 Clear all
                             </button>
                         )}
                     </div>
+
+                    {/* Order students see the courses in */}
+                    {order.length > 0 && (
+                        <section aria-labelledby="bundle-order-heading" className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                            <div className="flex items-start gap-2 mb-3">
+                                <ListOrdered className="w-4 h-4 text-indigo-600 mt-0.5" aria-hidden="true" />
+                                <div>
+                                    <h3 id="bundle-order-heading" className="text-sm font-bold text-gray-900">Course order</h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                        Students see the courses in this order, and course 1 is suggested as where to start. Drag a row or use the arrows.
+                                    </p>
+                                </div>
+                            </div>
+                            <ol className="space-y-1.5">
+                                {order.map((id, index) => (
+                                    <li
+                                        key={id}
+                                        draggable
+                                        onDragStart={() => setDragIndex(index)}
+                                        onDragOver={e => e.preventDefault()}
+                                        onDrop={e => {
+                                            e.preventDefault();
+                                            if (dragIndex !== null) moveCourse(dragIndex, index);
+                                            setDragIndex(null);
+                                        }}
+                                        onDragEnd={() => setDragIndex(null)}
+                                        className={`flex items-center gap-3 rounded-lg border bg-white px-3 py-2 text-sm transition-shadow ${dragIndex === index ? 'border-indigo-400 shadow-md opacity-70' : 'border-gray-200'}`}
+                                    >
+                                        <GripVertical className="w-4 h-4 text-gray-300 cursor-grab shrink-0" aria-hidden="true" />
+                                        <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                                            {index + 1}
+                                        </span>
+                                        <span className="flex-1 min-w-0 truncate font-medium text-gray-800">{titleOf(id)}</span>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => moveCourse(index, index - 1)}
+                                                disabled={index === 0}
+                                                aria-label={`Move ${titleOf(id)} up`}
+                                                className="p-1 rounded-md text-gray-500 hover:bg-indigo-100 hover:text-indigo-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                                            >
+                                                <ChevronUp className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => moveCourse(index, index + 1)}
+                                                disabled={index === order.length - 1}
+                                                aria-label={`Move ${titleOf(id)} down`}
+                                                className="p-1 rounded-md text-gray-500 hover:bg-indigo-100 hover:text-indigo-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                                            >
+                                                <ChevronDown className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleCourse(id)}
+                                                aria-label={`Remove ${titleOf(id)} from the bundle`}
+                                                className="p-1 rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ol>
+                        </section>
+                    )}
 
                     {/* Search */}
                     <div className="relative mb-5">
@@ -493,7 +620,7 @@ export function CourseGroupCreation() {
                     {addedCount > 0 && (
                         <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm mt-4">
                             <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                            {addedCount} course{addedCount > 1 ? 's' : ''} added! Redirecting...
+                            {editId ? 'Courses and order saved.' : `${addedCount} course${addedCount > 1 ? 's' : ''} added.`} Redirecting...
                         </div>
                     )}
 
@@ -511,7 +638,7 @@ export function CourseGroupCreation() {
                             className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-md shadow-indigo-500/20"
                         >
                             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                            {adding ? 'Adding...' : `Add ${selected.size || ''} Course${selected.size !== 1 ? 's' : ''} to Group`}
+                            {adding ? 'Saving...' : editId ? 'Save courses & order' : `Add ${selected.size || ''} Course${selected.size !== 1 ? 's' : ''} to Group`}
                         </button>
                     </div>
                 </div>

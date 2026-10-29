@@ -27,6 +27,7 @@ type EditDraft = Pick<CourseQuestion, 'type' | 'title' | 'prompt'> & {
     resourceUrl: string;
     evaluationCriteria: string;
     dueDate: string;
+    maxMarks: string;
 };
 
 function toDraft(q: CourseQuestion): EditDraft {
@@ -40,6 +41,7 @@ function toDraft(q: CourseQuestion): EditDraft {
         resourceUrl: q.resourceUrl ?? '',
         evaluationCriteria: q.evaluationCriteria ?? '',
         dueDate: q.dueDate ?? '',
+        maxMarks: q.maxMarks != null ? String(q.maxMarks) : '',
     };
 }
 
@@ -149,6 +151,8 @@ export function QuestionManager({ courseId }: { courseId: string }) {
                 resourceUrl: draft.resourceUrl || null,
                 evaluationCriteria: draft.evaluationCriteria || null,
                 dueDate: draft.dueDate || null,
+                // Only audio questions carry marks; empty falls back to the default (10).
+                maxMarks: draft.type === 'audio_question' && draft.maxMarks ? Number(draft.maxMarks) : null,
             });
             setQuestions(prev => prev.map(x => (x.id === updated.id ? updated : x)));
             setEditing(null);
@@ -303,7 +307,7 @@ export function QuestionManager({ courseId }: { courseId: string }) {
                                             </div>
                                             <p className="font-medium text-gray-900 dark:text-white">{question.title}</p>
                                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                {[question.topic, question.difficulty, question.expectedDurationMinutes ? `${question.expectedDurationMinutes} min` : null, question.dueDate ? `due ${formatDueDate(question.dueDate)}` : null].filter(Boolean).join(' · ') || 'No metadata'}
+                                                {[question.topic, question.difficulty, question.expectedDurationMinutes ? `${question.expectedDurationMinutes} min` : null, question.dueDate ? `due ${formatDueDate(question.dueDate)}` : null, question.maxMarks != null ? `out of ${question.maxMarks} marks` : null].filter(Boolean).join(' · ') || 'No metadata'}
                                             </p>
                                         </button>
                                         <div className="flex items-center gap-1">
@@ -374,6 +378,12 @@ export function QuestionManager({ courseId }: { courseId: string }) {
                                             <label className="text-xs text-gray-600 dark:text-gray-400">Due date
                                                 <input type="date" value={draft.dueDate} onChange={e => setDraft({ ...draft, dueDate: e.target.value })} className={inputCls} />
                                             </label>
+                                            {draft.type === 'audio_question' && (
+                                                <label className="text-xs text-gray-600 dark:text-gray-400">Maximum marks
+                                                    <input type="number" min={0.01} max={1000} step="any" placeholder="10" value={draft.maxMarks} onChange={e => setDraft({ ...draft, maxMarks: e.target.value })} className={inputCls} />
+                                                    <span className="mt-1 block text-[11px] text-gray-400">Students score themselves out of this. Leave empty for 10.</span>
+                                                </label>
+                                            )}
                                             <label className="text-xs text-gray-600 dark:text-gray-400 sm:col-span-2">Evaluation criteria
                                                 <textarea maxLength={5000} rows={3} value={draft.evaluationCriteria} onChange={e => setDraft({ ...draft, evaluationCriteria: e.target.value })} className={inputCls} />
                                             </label>

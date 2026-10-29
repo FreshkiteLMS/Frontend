@@ -7,6 +7,8 @@ import { paymentService } from '../../services/api/payment.api';
 import { RazorpayResponse } from '../../hooks/useRazorpay';
 import { env } from '@/config/env';
 import toast from 'react-hot-toast';
+import { refreshCourseAccess } from '@/hooks/use-course-access';
+import { useAuth } from '@/hooks/use-auth';
 
 interface PaymentButtonProps {
     amount: number; // Amount in smallest unit (e.g., paise)
@@ -27,6 +29,7 @@ interface PaymentButtonProps {
 export default function PaymentButton({ amount, currency, courseId, itemType, userDetails, onSuccess, onFailure, className, label }: PaymentButtonProps) {
     const { displayRazorpay } = useRazorpay();
     const router = useRouter();
+    const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
 
@@ -38,6 +41,11 @@ export default function PaymentButton({ amount, currency, courseId, itemType, us
 
         if (amount <= 0) {
             toast.error('This course has no price set. Please contact support or check back later.');
+            return;
+        }
+        if (!user) {
+            toast('Please log in to continue.', { icon: '🔒' });
+            router.push('/login');
             return;
         }
 
@@ -72,6 +80,7 @@ export default function PaymentButton({ amount, currency, courseId, itemType, us
                             razorpay_payment_id: response.razorpay_payment_id,
                             razorpay_signature: response.razorpay_signature
                         });
+                        await refreshCourseAccess();
 
                         if (onSuccess) {
                             onSuccess(response);
@@ -102,6 +111,14 @@ export default function PaymentButton({ amount, currency, courseId, itemType, us
             await displayRazorpay(options);
 
         } catch (error: any) {
+            // The server refuses to charge for something already owned (it prices
+            // and checks ownership itself) — take the student to their courses.
+            if (error.response?.data?.error?.code === 'ALREADY_OWNED') {
+                toast.success('You already have access — no payment needed.');
+                await refreshCourseAccess();
+                router.push('/student/courses');
+                return;
+            }
             console.error('Payment Error:', error);
             const errorMessage = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Something went wrong during payment initialization.';
 

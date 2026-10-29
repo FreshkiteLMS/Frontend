@@ -38,13 +38,23 @@ export interface CourseQuestion {
     resourceUrl: string | null;
     evaluationCriteria: string | null;
     dueDate: string | null;
+    /** Audio questions only: the score is out of this (default 10). Null for assignments. */
+    maxMarks: number | null;
     displayOrder: number;
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
 }
 
-export interface QuestionProgress {
+/** Recorded self-assessed score. `marksObtained: null` = no score yet (not the same as 0). */
+export interface QuestionMarks {
+    marksObtained: number | null;
+    /** The maximum the score was recorded against (kept if the question's maximum later changes). */
+    marksMax: number | null;
+    marksUpdatedAt: string | null;
+}
+
+export interface QuestionProgress extends QuestionMarks {
     status: QuestionStatus;
     version: number;
     updatedAt: string | null;
@@ -143,6 +153,44 @@ export interface StudentProgressRow {
     audio: ProgressMetrics;
     assignment: ProgressMetrics;
     lastActivity: string | null;
+    audioMarks: AudioMarksSummary;
+}
+
+export interface AudioMarksSummary {
+    scored: number;
+    unscored: number;
+    obtained: number;
+    max: number;
+    /** Over scored questions only; null when nothing is scored yet. */
+    percent: number | null;
+}
+
+/** One student × question cell. Absent from `cells` = never touched (not started). */
+export interface MatrixCell extends QuestionMarks {
+    status: QuestionStatus;
+    updatedAt: string | null;
+}
+
+export interface MatrixQuestion {
+    id: string;
+    title: string;
+    type: QuestionType;
+    topic: string | null;
+    maxMarks: number | null;
+    displayOrder: number;
+}
+
+export interface MatrixStudent {
+    userId: string;
+    name: string;
+    email: string | null;
+    cells: Record<string, MatrixCell>;
+}
+
+export interface ProgressMatrix extends Paginated<MatrixStudent> {
+    questions: MatrixQuestion[];
+    /** Total matching questions; the matrix shows at most 200 columns. */
+    questionTotal: number;
 }
 
 export interface CourseProgressSummary {
@@ -167,14 +215,16 @@ export interface ProgressEvent {
     toStatus: QuestionStatus;
     actorId: string;
     actorRole: string;
-    kind: 'self_update' | 'assessment' | 'override';
+    kind: 'self_update' | 'assessment' | 'override' | 'self_score';
     notes: string | null;
+    marksObtained?: number | null;
+    marksMax?: number | null;
     createdAt: string;
 }
 
 export interface StudentProgressDetail {
     student: { userId: string; name: string; email: string | null };
-    metrics: { overall: ProgressMetrics; audio: ProgressMetrics; assignment: ProgressMetrics; lastActivity: string | null };
+    metrics: { overall: ProgressMetrics; audio: ProgressMetrics; assignment: ProgressMetrics; lastActivity: string | null; audioMarks: AudioMarksSummary };
     questions: (CourseQuestion & { progress: QuestionProgress })[];
     history: ProgressEvent[];
 }

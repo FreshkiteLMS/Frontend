@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { Loader2, Globe, Instagram, Twitter, BookOpen, Users, Award, Zap, Check, ChevronDown, ChevronUp, Play, Clock, BarChart, Star } from "lucide-react";
 import { courseService } from "@/services/api/course.api";
 import { courseGroupService } from "@/services/api/courseGroupService";
-import { studentService } from "@/services/api/student.api";
 import { configService, PublicConfig } from "@/services/api/config.api";
 import { CourseCard } from "./course-card";
 import { SellingNavbar } from "@/components/layout/selling-navbar";
@@ -15,6 +14,7 @@ import { enrollmentRequestService } from "@/services/api/enrollment-request.api"
 import { ProductType, ApprovalStatus, productKey } from "@/types/enrollment-request";
 import { ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useCourseAccess } from "@/hooks/use-course-access";
 import Link from "next/link";
 
 const ALL_IN_ONE_ID = "ALL_IN_ONE";
@@ -47,12 +47,13 @@ interface BundleCardProps {
     group: CourseGroup;
     isExpanded: boolean;
     isOwned: boolean;
+    accessReady: boolean;
     onToggle: () => void;
     requestControl: React.ReactNode;
     user: any;
 }
 
-function BundleCard({ group, isExpanded, isOwned, onToggle, requestControl, user }: BundleCardProps) {
+function BundleCard({ group, isExpanded, isOwned, accessReady, onToggle, requestControl, user }: BundleCardProps) {
     const courseCount = (group.courses || []).length;
     const previewCourses = (group.courses || []).slice(0, isExpanded ? undefined : 3);
 
@@ -124,9 +125,14 @@ function BundleCard({ group, isExpanded, isOwned, onToggle, requestControl, user
                         </span>
                     </div>
                     {isOwned ? (
-                        <div className="w-full flex items-center justify-center gap-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-bold text-sm py-2.5 rounded-xl border border-green-200 dark:border-green-800">
-                            <Check className="w-4 h-4" /> Enrolled
-                        </div>
+                        <Link
+                            href="/student/courses"
+                            className="w-full flex items-center justify-center gap-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 font-bold text-sm py-2.5 rounded-xl border border-green-200 dark:border-green-800 transition-colors"
+                        >
+                            <Check className="w-4 h-4" aria-hidden="true" /> Enrolled · Continue learning
+                        </Link>
+                    ) : !accessReady ? (
+                        <div className="w-full h-[42px] rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" aria-label="Checking your access" />
                     ) : (
                         <PaymentButton
                             amount={(group.price || 0) * 100}
@@ -138,7 +144,7 @@ function BundleCard({ group, isExpanded, isOwned, onToggle, requestControl, user
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm transition-all flex items-center justify-center"
                         />
                     )}
-                    {requestControl && <div className="mt-2">{requestControl}</div>}
+                    {!isOwned && accessReady && requestControl && <div className="mt-2">{requestControl}</div>}
                 </div>
             </div>
         </div>
@@ -153,12 +159,12 @@ export function CourseSellingPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-    const [ownedCourseIds, setOwnedCourseIds] = useState<Set<string>>(new Set());
     const [siteConfig, setSiteConfig] = useState<PublicConfig | null>(null);
     const [requestStatuses, setRequestStatuses] = useState<Map<string, ApprovalStatus>>(new Map());
     const [requestModal, setRequestModal] = useState<{ productType: ProductType; productId: string; productName: string } | null>(null);
 
     const isStudent = user?.role === "student";
+    const access = useCourseAccess();
 
     const loadMyRequests = async () => {
         if (user?.role !== "student") return;
@@ -193,17 +199,6 @@ export function CourseSellingPage() {
                 setSiteConfig(cfg);
 
                 if (user?.role === "student" && user.id) {
-                    try {
-                        const studentData = await studentService.getStudentCourses(user.id);
-                        if (studentData && Array.isArray(studentData.courses)) {
-                            const owned = new Set<string>(
-                                studentData.courses.flatMap((c: any) => [c.id, c._id].filter(Boolean))
-                            );
-                            setOwnedCourseIds(owned);
-                        }
-                    } catch {
-                        // Non-critical
-                    }
                     await loadMyRequests();
                 }
 
@@ -353,6 +348,21 @@ export function CourseSellingPage() {
                                     <span className="text-blue-300/60 text-xs font-medium line-through">{formatCurrency(subscriptionPrice * 1.5, currency)}</span>
                                     <span className="text-white text-3xl font-black">{formattedPrice}</span>
                                 </div>
+                                {access.fullAccess ? (
+                                    <div className="flex flex-col gap-2">
+                                        <span className="inline-flex items-center gap-2 text-green-300 text-sm font-bold">
+                                            <ShieldCheck className="w-4 h-4" aria-hidden="true" /> You have full access to every course
+                                        </span>
+                                        <Link
+                                            href="/student/courses"
+                                            className="bg-white text-blue-700 hover:bg-blue-50 font-black px-8 py-3.5 rounded-xl text-sm transition-all shadow-xl shadow-blue-900/30 flex items-center justify-center gap-2 whitespace-nowrap"
+                                        >
+                                            Continue learning
+                                        </Link>
+                                    </div>
+                                ) : !access.ready ? (
+                                    <div className="h-[50px] w-64 rounded-xl bg-white/10 animate-pulse" aria-label="Checking your access" />
+                                ) : (
                                 <div className="flex flex-col gap-2">
                                     <PaymentButton
                                         amount={subscriptionPrice * 100}
@@ -365,6 +375,7 @@ export function CourseSellingPage() {
                                     />
                                     {renderRequestControl("ALL_IN_ONE", ALL_IN_ONE_ID, "freshkite Complete Course", "hero")}
                                 </div>
+                                )}
                             </div>
                         </div>
 
@@ -465,9 +476,8 @@ export function CourseSellingPage() {
                                     key={group._id}
                                     group={group}
                                     isExpanded={isExpanded}
-                                    isOwned={group.courses.some((ce: any) =>
-                                        ownedCourseIds.has(ce.courseId?.id || ce.courseId?.toString() || ce.courseId)
-                                    )}
+                                    isOwned={access.ownsBundle(group as any)}
+                                    accessReady={access.ready}
                                     onToggle={() => {
                                         const next = new Set(expandedGroups);
                                         if (isExpanded) next.delete(group._id);
@@ -520,10 +530,6 @@ export function CourseSellingPage() {
                             <CourseCard
                                 key={(course as any)._id || course.id}
                                 course={course}
-                                isOwned={
-                                    ownedCourseIds.has((course as any)._id) ||
-                                    ownedCourseIds.has(course.id || "")
-                                }
                             />
                         ))}
                     </div>

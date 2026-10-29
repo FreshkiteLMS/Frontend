@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { MySummary, ProgressMetrics, QuestionImport, StudentQuestion } from '@/types/structured-questions';
-import { isOverdue, studentActions } from '@/lib/question-progress';
+import { formatMarks, isOverdue, parseMarksInput, studentActions } from '@/lib/question-progress';
 
 const api = vi.hoisted(() => ({
     myQuestions: vi.fn(),
     mySummary: vi.fn(),
     setMyStatus: vi.fn(),
+    setMyScore: vi.fn(),
+    progressMatrix: vi.fn(),
     previewFromSheet: vi.fn(),
     previewFromFile: vi.fn(),
     commitImport: vi.fn(),
@@ -45,9 +47,9 @@ function question(over: Partial<StudentQuestion> = {}): StudentQuestion {
     return {
         id: 'q1', courseId: 'c1', externalId: 'react-q1', type: 'audio_question', title: 'What is React?',
         prompt: 'Explain React.', topic: 'Basics', difficulty: 'beginner', expectedDurationMinutes: 5,
-        resourceUrl: 'https://react.dev', evaluationCriteria: null, dueDate: null, displayOrder: 0, isActive: true,
+        resourceUrl: 'https://react.dev', evaluationCriteria: null, dueDate: null, maxMarks: 10, displayOrder: 0, isActive: true,
         createdAt: '', updatedAt: '',
-        progress: { status: 'NOT_STARTED', version: 0, updatedAt: null, updatedByRole: null, assessmentNotes: null, assessedAt: null, allowedStudentStatuses: ['IN_PROGRESS', 'COMPLETED'] },
+        progress: { status: 'NOT_STARTED', version: 0, updatedAt: null, updatedByRole: null, assessmentNotes: null, assessedAt: null, allowedStudentStatuses: ['IN_PROGRESS', 'COMPLETED'], marksObtained: null, marksMax: null, marksUpdatedAt: null },
         ...over,
     };
 }
@@ -109,7 +111,7 @@ describe('StudentQuestionsPanel', () => {
 
     const confirmed = (status: StudentQuestion['progress']['status'], version: number, allowed: StudentQuestion['progress']['status'][]) => ({
         questionId: 'q1', studentUserId: 'u', status, version, updatedAt: '2026-01-01T00:00:00Z', updatedByRole: 'student',
-        assessmentNotes: null, assessedAt: null, allowedStudentStatuses: allowed, changed: true,
+        assessmentNotes: null, assessedAt: null, allowedStudentStatuses: allowed, changed: true, marksObtained: null, marksMax: null, marksUpdatedAt: null,
     });
     const checkedStep = () => screen.getByRole('radio', { checked: true }).textContent;
 
@@ -179,8 +181,8 @@ describe('StudentQuestionsPanel', () => {
 
     test('shows the instructor outcome for assessed questions, with retry after a fail', async () => {
         api.myQuestions.mockResolvedValue(page([
-            question({ progress: { status: 'PASS', version: 2, updatedAt: null, updatedByRole: 'teacher', assessmentNotes: 'Great', assessedAt: null, allowedStudentStatuses: [] } }),
-            question({ id: 'q2', title: 'Props vs state', progress: { status: 'FAIL', version: 2, updatedAt: null, updatedByRole: 'teacher', assessmentNotes: null, assessedAt: null, allowedStudentStatuses: ['IN_PROGRESS'] } }),
+            question({ progress: { status: 'PASS', version: 2, updatedAt: null, updatedByRole: 'teacher', assessmentNotes: 'Great', assessedAt: null, allowedStudentStatuses: [], marksObtained: null, marksMax: null, marksUpdatedAt: null } }),
+            question({ id: 'q2', title: 'Props vs state', progress: { status: 'FAIL', version: 2, updatedAt: null, updatedByRole: 'teacher', assessmentNotes: null, assessedAt: null, allowedStudentStatuses: ['IN_PROGRESS'], marksObtained: null, marksMax: null, marksUpdatedAt: null } }),
         ]));
         api.mySummary.mockResolvedValue(summary);
         render(<StudentQuestionsPanel courseId="c1" />);
@@ -284,7 +286,7 @@ describe('ProgressDashboard', () => {
         });
         const overall = { ...metrics(2), counts: { NOT_STARTED: 0, IN_PROGRESS: 1, COMPLETED: 0, PASS: 1, FAIL: 0 }, finished: 1, percentFinished: 50 };
         api.progressStudents.mockResolvedValue({
-            data: [{ userId: 'u1', name: 'Alice', email: 'alice@test.dev', completion: 'in_progress', overall, audio: metrics(1), assignment: { ...metrics(1, 1) }, lastActivity: null }],
+            data: [{ userId: 'u1', name: 'Alice', email: 'alice@test.dev', completion: 'in_progress', overall, audio: metrics(1), assignment: { ...metrics(1, 1) }, lastActivity: null, audioMarks: { scored: 1, unscored: 0, obtained: 8, max: 10, percent: 80 } }],
             meta: { page: 1, limit: 25, total: 1, totalPages: 1 }, totalQuestions: 2,
         });
         render(<ProgressDashboard courseId="c1" />);
@@ -292,6 +294,7 @@ describe('ProgressDashboard', () => {
         expect(screen.getByText('React Prep')).toBeTruthy();
         const row = screen.getByText('Alice').closest('tr')!;
         expect(within(row).getByText('1/2')).toBeTruthy();
+        expect(within(row).getByText('8 / 10')).toBeTruthy();
 
         fireEvent.change(screen.getByLabelText('Completion'), { target: { value: 'finished' } });
         await waitFor(() => expect(api.progressStudents).toHaveBeenLastCalledWith('c1', expect.objectContaining({ completion: 'finished' })));
@@ -310,5 +313,127 @@ describe('ProgressDashboard', () => {
         // Zero students / zero questions renders 0% (no NaN from division by zero).
         expect(screen.getAllByText('0%', { selector: 'p' })).toHaveLength(2);
         expect(screen.queryByText(/NaN/)).toBeNull();
+    });
+});
+
+describe('audio-question marks', () => {
+    test('parseMarksInput mirrors the server rules', () => {
+        expect(parseMarksInput('9', 10)).toEqual({ value: 9 });
+        expect(parseMarksInput('85', 100)).toEqual({ value: 85 });
+        expect(parseMarksInput('8.5', 10)).toEqual({ value: 8.5 });
+        expect(parseMarksInput('0', 10)).toEqual({ value: 0 });
+        expect(parseMarksInput('', 10)).toEqual({ value: null });
+        expect(parseMarksInput('11', 10).error).toMatch(/more than 10/);
+        expect(parseMarksInput('-1', 10).error).toMatch(/negative/);
+        expect(parseMarksInput('abc', 10).error).toMatch(/number/);
+        expect(parseMarksInput('8.123', 10).error).toMatch(/decimal/);
+        expect(formatMarks(8.5, 10)).toBe('8.5 / 10');
+        expect(formatMarks(9, 10)).toBe('9 / 10');
+    });
+
+    const scored = (marksObtained: number | null, version: number) => ({
+        questionId: 'q1', studentUserId: 'u', status: 'COMPLETED', version, updatedAt: '2026-01-01T00:00:00Z', updatedByRole: 'student',
+        assessmentNotes: null, assessedAt: null, allowedStudentStatuses: ['IN_PROGRESS'], changed: true,
+        marksObtained, marksMax: marksObtained === null ? null : 10, marksUpdatedAt: null,
+    });
+    const checked = () => screen.getByRole('radio', { checked: true }).textContent;
+
+    test('shows the maximum and saves a score only after the server confirms it', async () => {
+        api.myQuestions.mockResolvedValue(page([question()]));
+        api.mySummary.mockResolvedValue(summary);
+        let resolve!: (v: unknown) => void;
+        api.setMyScore.mockReturnValue(new Promise(r => { resolve = r; }));
+        render(<StudentQuestionsPanel courseId="c1" />);
+
+        const input = await screen.findByLabelText(/Your score for .What is React\?., out of 10/);
+        expect(screen.getByText('Out of 10 marks')).toBeTruthy();
+        fireEvent.change(input, { target: { value: '9' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        expect(api.setMyScore).toHaveBeenCalledWith('c1', 'q1', 9, 0);
+        expect(screen.getByText('Saving…')).toBeTruthy();
+
+        resolve(scored(9, 1));
+        expect(await screen.findByText('Score saved: 9 / 10')).toBeTruthy();
+        // A saved score moves NOT_STARTED to Completed (server-confirmed).
+        expect(checked()).toBe('Completed');
+    });
+
+    test('restores a saved score on load', async () => {
+        api.myQuestions.mockResolvedValue(page([question({ progress: { ...question().progress, status: 'COMPLETED', version: 3, marksObtained: 8.5, marksMax: 10 } })]));
+        api.mySummary.mockResolvedValue(summary);
+        render(<StudentQuestionsPanel courseId="c1" />);
+        const input = await screen.findByLabelText(/Your score for/) as HTMLInputElement;
+        expect(input.value).toBe('8.5');
+        expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy();
+    });
+
+    test.each([['11', /more than 10/], ['-2', /negative/], ['nine', /number/]])('blocks invalid input %s without calling the server', async (value, message) => {
+        api.myQuestions.mockResolvedValue(page([question()]));
+        api.mySummary.mockResolvedValue(summary);
+        render(<StudentQuestionsPanel courseId="c1" />);
+        fireEvent.change(await screen.findByLabelText(/Your score for/), { target: { value } });
+        expect(screen.getByRole('alert').textContent).toMatch(message);
+        expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+        expect(api.setMyScore).not.toHaveBeenCalled();
+    });
+
+    test('keeps the saved score when the server rejects a change', async () => {
+        api.myQuestions.mockResolvedValue(page([question({ progress: { ...question().progress, status: 'COMPLETED', version: 1, marksObtained: 7, marksMax: 10 } })]));
+        api.mySummary.mockResolvedValue(summary);
+        api.setMyScore.mockRejectedValue({ response: { data: { error: { message: 'Network down' } } } });
+        render(<StudentQuestionsPanel courseId="c1" />);
+        const input = await screen.findByLabelText(/Your score for/) as HTMLInputElement;
+        fireEvent.change(input, { target: { value: '9' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Network down'));
+        expect(screen.queryByText(/Score saved/)).toBeNull();
+    });
+
+    test('assignments have no marks input, and a passed question shows its score read-only', async () => {
+        api.myQuestions.mockResolvedValue(page([
+            question({ id: 'a1', type: 'assignment', title: 'Build a form', maxMarks: null }),
+            question({ id: 'q2', title: 'Closures', maxMarks: 100, progress: { ...question().progress, status: 'PASS', version: 4, allowedStudentStatuses: [], marksObtained: 85, marksMax: 100 } }),
+        ]));
+        api.mySummary.mockResolvedValue(summary);
+        render(<StudentQuestionsPanel courseId="c1" />);
+        await screen.findByText('Build a form');
+        expect(screen.queryByLabelText(/Your score for .Build a form./)).toBeNull();
+        expect(screen.getByText('85 / 100')).toBeTruthy();
+        expect(screen.queryByLabelText(/Your score for .Closures./)).toBeNull();
+    });
+});
+
+describe('ProgressMatrix', () => {
+    test('distinguishes no response from a zero score', async () => {
+        api.progressSummary.mockResolvedValue({
+            courseId: 'c1', courseTitle: 'React Prep', totalStudents: 2, totalQuestions: 2,
+            questionsByType: { audio_question: 2, assignment: 0 },
+            statusTotals: { NOT_STARTED: 0, IN_PROGRESS: 0, COMPLETED: 2, PASS: 0, FAIL: 0 },
+            studentsStarted: 2, studentsFinished: 0, averagePercentFinished: 50, percentPairsFinished: 50, percentPairsPassed: 0, lastActivity: null,
+        });
+        api.progressStudents.mockResolvedValue({ data: [], meta: { page: 1, limit: 25, total: 0, totalPages: 0 }, totalQuestions: 2 });
+        api.progressMatrix.mockResolvedValue({
+            questions: [
+                { id: 'q1', title: 'What is React?', type: 'audio_question', topic: null, maxMarks: 10, displayOrder: 0 },
+                { id: 'q2', title: 'Closures', type: 'audio_question', topic: null, maxMarks: 100, displayOrder: 1 },
+            ],
+            questionTotal: 2,
+            data: [
+                { userId: 'u1', name: 'Alice', email: null, cells: { q1: { status: 'COMPLETED', updatedAt: null, marksObtained: 9, marksMax: 10, marksUpdatedAt: null } } },
+                { userId: 'u2', name: 'Bob', email: null, cells: { q1: { status: 'COMPLETED', updatedAt: null, marksObtained: 0, marksMax: 10, marksUpdatedAt: null } } },
+            ],
+            meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+        });
+        render(<ProgressDashboard courseId="c1" />);
+        fireEvent.click(await screen.findByRole('tab', { name: 'Question grid' }));
+
+        const alice = (await screen.findByText('Alice')).closest('tr')!;
+        const bob = screen.getByText('Bob').closest('tr')!;
+        expect(within(alice).getByText('9 / 10')).toBeTruthy();
+        expect(within(bob).getByText('0 / 10')).toBeTruthy();
+        expect(within(alice).getByText('Not started, no response')).toBeTruthy();
+
+        fireEvent.change(screen.getByLabelText('Students with a question in status'), { target: { value: 'PASS' } });
+        await waitFor(() => expect(api.progressMatrix).toHaveBeenLastCalledWith('c1', expect.objectContaining({ status: 'PASS', page: 1 })));
     });
 });
