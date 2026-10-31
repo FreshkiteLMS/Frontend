@@ -40,13 +40,20 @@ export interface CourseQuestion {
     dueDate: string | null;
     /** Audio questions only: the score is out of this (default 10). Null for assignments. */
     maxMarks: number | null;
+    /** AI speaking assessment inputs (admin/instructor views only; omitted for students). */
+    expectedAnswer?: string | null;
+    keyConcepts?: string[];
+    answerLanguage?: string | null;
+    maxRecordingMinutes?: number | null;
+    /** Student views: whether a reference answer is configured (its text is never sent). */
+    hasReferenceAnswer?: boolean;
     displayOrder: number;
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
 }
 
-/** Recorded self-assessed score. `marksObtained: null` = no score yet (not the same as 0). */
+/** Best AI speaking score, scaled to the question's marks (read-only; students cannot enter scores). `marksObtained: null` = no score yet (not the same as 0). */
 export interface QuestionMarks {
     marksObtained: number | null;
     /** The maximum the score was recorded against (kept if the question's maximum later changes). */
@@ -215,7 +222,7 @@ export interface ProgressEvent {
     toStatus: QuestionStatus;
     actorId: string;
     actorRole: string;
-    kind: 'self_update' | 'assessment' | 'override' | 'self_score';
+    kind: 'self_update' | 'assessment' | 'override' | 'self_score' | 'ai_score';
     notes: string | null;
     marksObtained?: number | null;
     marksMax?: number | null;

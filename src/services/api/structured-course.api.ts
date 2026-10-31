@@ -105,6 +105,10 @@ export const structuredCourseService = {
         const res = await api.get(`${base(courseId)}/my/questions`, { params: clean(params) });
         return res.data;
     },
+    myQuestion: async (courseId: string, questionId: string): Promise<StudentQuestion> => {
+        const res = await api.get(`${base(courseId)}/my/questions/${questionId}`);
+        return res.data.data;
+    },
     mySummary: async (courseId: string): Promise<MySummary> => {
         const res = await api.get(`${base(courseId)}/my/summary`);
         return res.data.data;
@@ -113,12 +117,6 @@ export const structuredCourseService = {
         const res = await api.put(`${base(courseId)}/my/questions/${questionId}/status`, { status, expectedVersion });
         return res.data.data;
     },
-    /** Save (or clear with null) the caller's self-assessed score for an audio question. */
-    setMyScore: async (courseId: string, questionId: string, marksObtained: number | null, expectedVersion: number): Promise<StatusChangeResult> => {
-        const res = await api.put(`${base(courseId)}/my/questions/${questionId}/score`, { marksObtained, expectedVersion });
-        return res.data.data;
-    },
-
     // ── Instructor reporting & assessment ──
     progressSummary: async (courseId: string): Promise<CourseProgressSummary> => {
         const res = await api.get(`${base(courseId)}/progress/summary`);

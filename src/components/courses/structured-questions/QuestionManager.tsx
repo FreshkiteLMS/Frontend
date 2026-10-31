@@ -28,6 +28,10 @@ type EditDraft = Pick<CourseQuestion, 'type' | 'title' | 'prompt'> & {
     evaluationCriteria: string;
     dueDate: string;
     maxMarks: string;
+    expectedAnswer: string;
+    keyConcepts: string;
+    answerLanguage: string;
+    maxRecordingMinutes: string;
 };
 
 function toDraft(q: CourseQuestion): EditDraft {
@@ -42,6 +46,10 @@ function toDraft(q: CourseQuestion): EditDraft {
         evaluationCriteria: q.evaluationCriteria ?? '',
         dueDate: q.dueDate ?? '',
         maxMarks: q.maxMarks != null ? String(q.maxMarks) : '',
+        expectedAnswer: q.expectedAnswer ?? '',
+        keyConcepts: (q.keyConcepts ?? []).join('\n'),
+        answerLanguage: q.answerLanguage ?? '',
+        maxRecordingMinutes: q.maxRecordingMinutes != null ? String(q.maxRecordingMinutes) : '',
     };
 }
 
@@ -153,6 +161,10 @@ export function QuestionManager({ courseId }: { courseId: string }) {
                 dueDate: draft.dueDate || null,
                 // Only audio questions carry marks; empty falls back to the default (10).
                 maxMarks: draft.type === 'audio_question' && draft.maxMarks ? Number(draft.maxMarks) : null,
+                expectedAnswer: draft.expectedAnswer.trim() || null,
+                keyConcepts: draft.keyConcepts.split(/[\n;]+/).map(x => x.trim()).filter(Boolean),
+                answerLanguage: draft.answerLanguage.trim() || null,
+                maxRecordingMinutes: draft.type === 'audio_question' && draft.maxRecordingMinutes ? Number(draft.maxRecordingMinutes) : null,
             });
             setQuestions(prev => prev.map(x => (x.id === updated.id ? updated : x)));
             setEditing(null);
@@ -387,6 +399,26 @@ export function QuestionManager({ courseId }: { courseId: string }) {
                                             <label className="text-xs text-gray-600 dark:text-gray-400 sm:col-span-2">Evaluation criteria
                                                 <textarea maxLength={5000} rows={3} value={draft.evaluationCriteria} onChange={e => setDraft({ ...draft, evaluationCriteria: e.target.value })} className={inputCls} />
                                             </label>
+                                            {draft.type === 'audio_question' && (
+                                                <fieldset className="sm:col-span-2 grid gap-3 sm:grid-cols-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 p-3">
+                                                    <legend className="px-1 text-xs font-semibold text-gray-700 dark:text-gray-300">AI speaking assessment (optional)</legend>
+                                                    <p className="sm:col-span-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                                        Used only by the AI evaluator. Students never see the reference answer or key concepts. Without them, answers are judged with general domain knowledge at lower confidence.
+                                                    </p>
+                                                    <label className="text-xs text-gray-600 dark:text-gray-400 sm:col-span-2">Reference answer
+                                                        <textarea maxLength={10000} rows={4} value={draft.expectedAnswer} onChange={e => setDraft({ ...draft, expectedAnswer: e.target.value })} className={inputCls} />
+                                                    </label>
+                                                    <label className="text-xs text-gray-600 dark:text-gray-400 sm:col-span-2">Key concepts <span className="text-gray-400">(one per line)</span>
+                                                        <textarea rows={3} value={draft.keyConcepts} onChange={e => setDraft({ ...draft, keyConcepts: e.target.value })} className={inputCls} />
+                                                    </label>
+                                                    <label className="text-xs text-gray-600 dark:text-gray-400">Answer language
+                                                        <input maxLength={16} placeholder="e.g. en" value={draft.answerLanguage} onChange={e => setDraft({ ...draft, answerLanguage: e.target.value })} className={inputCls} />
+                                                    </label>
+                                                    <label className="text-xs text-gray-600 dark:text-gray-400">Max recording (minutes)
+                                                        <input type="number" min={1} max={15} placeholder="10" value={draft.maxRecordingMinutes} onChange={e => setDraft({ ...draft, maxRecordingMinutes: e.target.value })} className={inputCls} />
+                                                    </label>
+                                                </fieldset>
+                                            )}
                                             <div className="sm:col-span-2 flex justify-end gap-2">
                                                 <button type="button" onClick={() => { setEditing(null); setDraft(null); }} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg">Cancel</button>
                                                 <button type="submit" disabled={savingId === question.id} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50">

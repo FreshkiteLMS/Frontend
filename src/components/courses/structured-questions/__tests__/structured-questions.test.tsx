@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { MySummary, ProgressMetrics, QuestionImport, StudentQuestion } from '@/types/structured-questions';
-import { formatMarks, isOverdue, parseMarksInput, studentActions } from '@/lib/question-progress';
+import { formatMarks, isOverdue, studentActions } from '@/lib/question-progress';
 
 const api = vi.hoisted(() => ({
     myQuestions: vi.fn(),
     mySummary: vi.fn(),
     setMyStatus: vi.fn(),
-    setMyScore: vi.fn(),
     progressMatrix: vi.fn(),
     previewFromSheet: vi.fn(),
     previewFromFile: vi.fn(),
@@ -29,11 +28,20 @@ vi.mock('@/services/api/structured-course.api', () => ({
     apiErrorDetails: (err: ApiErr) => err?.response?.data?.error?.details,
 }));
 vi.mock('react-hot-toast', () => ({ default: toast }));
+// The panel also loads AI speaking-practice stats; keep these tests hermetic.
+const speakingApi = vi.hoisted(() => ({ summary: vi.fn() }));
+vi.mock('@/services/api/speaking.api', () => ({ speakingService: speakingApi }));
+vi.mock('../../speaking/SpeakingPractice', async () => {
+    const React = await import('react');
+    return {
+        SpeakingPractice: (p: { question: { id: string }; openLatest?: boolean }) =>
+            React.createElement('div', null, 'practice:' + p.question.id + ':' + String(!!p.openLatest)),
+    };
+});
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { StudentQuestionsPanel } from '../StudentQuestionsPanel';
 import { QuestionImportPanel } from '../QuestionImportPanel';
-import { ProgressDashboard } from '../ProgressDashboard';
 
 const metrics = (total: number, finished = 0): ProgressMetrics => ({
     total,
@@ -54,11 +62,15 @@ function question(over: Partial<StudentQuestion> = {}): StudentQuestion {
     };
 }
 
+const assignment = (over: Partial<StudentQuestion> = {}): StudentQuestion =>
+    question({ id: 'a1', type: 'assignment', title: 'Build a form', maxMarks: null, ...over });
+
 const page = <T,>(data: T[]) => ({ data, meta: { page: 1, limit: 15, total: data.length, totalPages: 1 }, topics: ['Basics'] });
 
 beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    speakingApi.summary.mockRejectedValue(new Error('not under test'));
 });
 afterEach(cleanup);
 
@@ -110,20 +122,20 @@ describe('StudentQuestionsPanel', () => {
     });
 
     const confirmed = (status: StudentQuestion['progress']['status'], version: number, allowed: StudentQuestion['progress']['status'][]) => ({
-        questionId: 'q1', studentUserId: 'u', status, version, updatedAt: '2026-01-01T00:00:00Z', updatedByRole: 'student',
+        questionId: 'a1', studentUserId: 'u', status, version, updatedAt: '2026-01-01T00:00:00Z', updatedByRole: 'student',
         assessmentNotes: null, assessedAt: null, allowedStudentStatuses: allowed, changed: true, marksObtained: null, marksMax: null, marksUpdatedAt: null,
     });
     const checkedStep = () => screen.getByRole('radio', { checked: true }).textContent;
 
     test('updates the status only after the server confirms it, sending the version', async () => {
-        api.myQuestions.mockResolvedValue(page([question()]));
+        api.myQuestions.mockResolvedValue(page([assignment()]));
         api.mySummary.mockResolvedValue(summary);
         let resolve!: (v: unknown) => void;
         api.setMyStatus.mockReturnValue(new Promise(r => { resolve = r; }));
         render(<StudentQuestionsPanel courseId="c1" />);
         fireEvent.click(await screen.findByRole('radio', { name: 'In progress' }));
 
-        expect(api.setMyStatus).toHaveBeenCalledWith('c1', 'q1', 'IN_PROGRESS', 0);
+        expect(api.setMyStatus).toHaveBeenCalledWith('c1', 'a1', 'IN_PROGRESS', 0);
         expect(screen.getByText('Saving…')).toBeTruthy();
         expect(checkedStep()).toBe('Not started');
 
@@ -134,13 +146,13 @@ describe('StudentQuestionsPanel', () => {
         // The next step uses the version the server returned.
         api.setMyStatus.mockResolvedValue(confirmed('COMPLETED', 2, ['IN_PROGRESS']));
         fireEvent.click(screen.getByRole('radio', { name: 'Completed' }));
-        expect(api.setMyStatus).toHaveBeenLastCalledWith('c1', 'q1', 'COMPLETED', 1);
+        expect(api.setMyStatus).toHaveBeenLastCalledWith('c1', 'a1', 'COMPLETED', 1);
         await waitFor(() => expect(checkedStep()).toBe('Completed'));
         expect((screen.getByRole('radio', { name: 'Not started' }) as HTMLButtonElement).disabled).toBe(true);
     });
 
     test('a double click sends only one request', async () => {
-        api.myQuestions.mockResolvedValue(page([question()]));
+        api.myQuestions.mockResolvedValue(page([assignment()]));
         api.mySummary.mockResolvedValue(summary);
         let resolve!: (v: unknown) => void;
         api.setMyStatus.mockReturnValue(new Promise(r => { resolve = r; }));
@@ -155,12 +167,12 @@ describe('StudentQuestionsPanel', () => {
     });
 
     test('a version conflict shows the latest server state instead of an error', async () => {
-        api.myQuestions.mockResolvedValue(page([question()]));
+        api.myQuestions.mockResolvedValue(page([assignment()]));
         api.mySummary.mockResolvedValue(summary);
         api.setMyStatus.mockRejectedValue({ response: { data: { error: {
             code: 'VERSION_CONFLICT',
             message: 'This question was updated in another tab or by your instructor. The latest status is now shown.',
-            details: { questionId: 'q1', progress: { status: 'COMPLETED', version: 3, allowedStudentStatuses: ['IN_PROGRESS'], updatedAt: null, updatedByRole: 'student', assessmentNotes: null, assessedAt: null } },
+            details: { questionId: 'a1', progress: { status: 'COMPLETED', version: 3, allowedStudentStatuses: ['IN_PROGRESS'], updatedAt: null, updatedByRole: 'student', assessmentNotes: null, assessedAt: null } },
         } } } });
         render(<StudentQuestionsPanel courseId="c1" />);
         fireEvent.click(await screen.findByRole('radio', { name: 'In progress' }));
@@ -170,7 +182,7 @@ describe('StudentQuestionsPanel', () => {
     });
 
     test('keeps the previous status when the update fails', async () => {
-        api.myQuestions.mockResolvedValue(page([question()]));
+        api.myQuestions.mockResolvedValue(page([assignment()]));
         api.mySummary.mockResolvedValue(summary);
         api.setMyStatus.mockRejectedValue({ response: { data: { error: { message: 'Network down' } } } });
         render(<StudentQuestionsPanel courseId="c1" />);
@@ -181,8 +193,8 @@ describe('StudentQuestionsPanel', () => {
 
     test('shows the instructor outcome for assessed questions, with retry after a fail', async () => {
         api.myQuestions.mockResolvedValue(page([
-            question({ progress: { status: 'PASS', version: 2, updatedAt: null, updatedByRole: 'teacher', assessmentNotes: 'Great', assessedAt: null, allowedStudentStatuses: [], marksObtained: null, marksMax: null, marksUpdatedAt: null } }),
-            question({ id: 'q2', title: 'Props vs state', progress: { status: 'FAIL', version: 2, updatedAt: null, updatedByRole: 'teacher', assessmentNotes: null, assessedAt: null, allowedStudentStatuses: ['IN_PROGRESS'], marksObtained: null, marksMax: null, marksUpdatedAt: null } }),
+            assignment({ progress: { status: 'PASS', version: 2, updatedAt: null, updatedByRole: 'teacher', assessmentNotes: 'Great', assessedAt: null, allowedStudentStatuses: [], marksObtained: null, marksMax: null, marksUpdatedAt: null } }),
+            assignment({ id: 'a2', title: 'Props vs state', progress: { status: 'FAIL', version: 2, updatedAt: null, updatedByRole: 'teacher', assessmentNotes: null, assessedAt: null, allowedStudentStatuses: ['IN_PROGRESS'], marksObtained: null, marksMax: null, marksUpdatedAt: null } }),
         ]));
         api.mySummary.mockResolvedValue(summary);
         render(<StudentQuestionsPanel courseId="c1" />);
@@ -203,10 +215,10 @@ describe('StudentQuestionsPanel', () => {
     });
 
     test('read-only mode (instructor preview) offers no status buttons', async () => {
-        api.myQuestions.mockResolvedValue(page([question()]));
+        api.myQuestions.mockResolvedValue(page([assignment()]));
         api.mySummary.mockResolvedValue(summary);
         render(<StudentQuestionsPanel courseId="c1" readOnly />);
-        await screen.findByText('What is React?');
+        await screen.findByText('Build a form');
         expect(screen.queryByRole('radiogroup')).toBeNull();
         expect(screen.getByText('Not started', { selector: 'span' })).toBeTruthy();
     });
@@ -276,164 +288,71 @@ describe('QuestionImportPanel', () => {
     });
 });
 
-describe('ProgressDashboard', () => {
-    test('renders server-computed per-student statuses', async () => {
-        api.progressSummary.mockResolvedValue({
-            courseId: 'c1', courseTitle: 'React Prep', totalStudents: 1, totalQuestions: 2,
-            questionsByType: { audio_question: 1, assignment: 1 },
-            statusTotals: { NOT_STARTED: 0, IN_PROGRESS: 1, COMPLETED: 0, PASS: 1, FAIL: 0 },
-            studentsStarted: 1, studentsFinished: 0, averagePercentFinished: 50, percentPairsFinished: 50, percentPairsPassed: 50, lastActivity: null,
-        });
-        const overall = { ...metrics(2), counts: { NOT_STARTED: 0, IN_PROGRESS: 1, COMPLETED: 0, PASS: 1, FAIL: 0 }, finished: 1, percentFinished: 50 };
-        api.progressStudents.mockResolvedValue({
-            data: [{ userId: 'u1', name: 'Alice', email: 'alice@test.dev', completion: 'in_progress', overall, audio: metrics(1), assignment: { ...metrics(1, 1) }, lastActivity: null, audioMarks: { scored: 1, unscored: 0, obtained: 8, max: 10, percent: 80 } }],
-            meta: { page: 1, limit: 25, total: 1, totalPages: 1 }, totalQuestions: 2,
-        });
-        render(<ProgressDashboard courseId="c1" />);
-        expect(await screen.findByText('Alice')).toBeTruthy();
-        expect(screen.getByText('React Prep')).toBeTruthy();
-        const row = screen.getByText('Alice').closest('tr')!;
-        expect(within(row).getByText('1/2')).toBeTruthy();
-        expect(within(row).getByText('8 / 10')).toBeTruthy();
-
-        fireEvent.change(screen.getByLabelText('Completion'), { target: { value: 'finished' } });
-        await waitFor(() => expect(api.progressStudents).toHaveBeenLastCalledWith('c1', expect.objectContaining({ completion: 'finished' })));
+describe('audio question cards (AI practice)', () => {
+    const stats = (over: Record<string, unknown> = {}) => ({
+        totalAttempts: 3, completedAttempts: 3, latestScore: 7, bestScore: 9, averageScore: 8, firstScore: 6, improvement: 1,
+        lastPracticedAt: null, latestStatus: 'COMPLETED', latestAttemptId: 'at1', latestErrorCode: null,
+        lastActivity: new Date().toISOString(), ...over,
+    });
+    const speakingSummary = (byQuestion: Record<string, unknown>) => ({
+        totals: { audioQuestions: 1, questionsAttempted: 1, questionsNotAttempted: 0, totalAttempts: 3, completedAttempts: 3, averageScore: 8, bestScore: { score: 9, questionId: 'q1', title: 'What is React?' }, completionPercent: 100, lastActivity: null },
+        activity: { today: 0, daysPracticedLast7: 1, trend: [] }, recent: [], byQuestion, suggestions: [],
     });
 
-    test('shows an empty state when nobody is enrolled', async () => {
-        api.progressSummary.mockResolvedValue({
-            courseId: 'c1', courseTitle: 'Empty', totalStudents: 0, totalQuestions: 0,
-            questionsByType: { audio_question: 0, assignment: 0 },
-            statusTotals: { NOT_STARTED: 0, IN_PROGRESS: 0, COMPLETED: 0, PASS: 0, FAIL: 0 },
-            studentsStarted: 0, studentsFinished: 0, averagePercentFinished: 0, percentPairsFinished: 0, percentPairsPassed: 0, lastActivity: null,
-        });
-        api.progressStudents.mockResolvedValue({ data: [], meta: { page: 1, limit: 25, total: 0, totalPages: 0 }, totalQuestions: 0 });
-        render(<ProgressDashboard courseId="c1" />);
-        expect(await screen.findByText('No students are enrolled in this course yet.')).toBeTruthy();
-        // Zero students / zero questions renders 0% (no NaN from division by zero).
-        expect(screen.getAllByText('0%', { selector: 'p' })).toHaveLength(2);
-        expect(screen.queryByText(/NaN/)).toBeNull();
-    });
-});
-
-describe('audio-question marks', () => {
-    test('parseMarksInput mirrors the server rules', () => {
-        expect(parseMarksInput('9', 10)).toEqual({ value: 9 });
-        expect(parseMarksInput('85', 100)).toEqual({ value: 85 });
-        expect(parseMarksInput('8.5', 10)).toEqual({ value: 8.5 });
-        expect(parseMarksInput('0', 10)).toEqual({ value: 0 });
-        expect(parseMarksInput('', 10)).toEqual({ value: null });
-        expect(parseMarksInput('11', 10).error).toMatch(/more than 10/);
-        expect(parseMarksInput('-1', 10).error).toMatch(/negative/);
-        expect(parseMarksInput('abc', 10).error).toMatch(/number/);
-        expect(parseMarksInput('8.123', 10).error).toMatch(/decimal/);
-        expect(formatMarks(8.5, 10)).toBe('8.5 / 10');
-        expect(formatMarks(9, 10)).toBe('9 / 10');
+    test('has no status buttons or score input, just one practice action', async () => {
+        api.myQuestions.mockResolvedValue(page([question(), assignment()]));
+        api.mySummary.mockResolvedValue(summary);
+        render(<StudentQuestionsPanel courseId="c1" />);
+        expect(await screen.findByRole('button', { name: /Start practicing: What is React\?/ })).toBeTruthy();
+        expect(screen.queryByLabelText(/Your score/)).toBeNull();
+        expect(screen.queryByText(/Out of 10 marks/)).toBeNull();
+        // Only the assignment keeps the manual status control.
+        expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
     });
 
-    const scored = (marksObtained: number | null, version: number) => ({
-        questionId: 'q1', studentUserId: 'u', status: 'COMPLETED', version, updatedAt: '2026-01-01T00:00:00Z', updatedByRole: 'student',
-        assessmentNotes: null, assessedAt: null, allowedStudentStatuses: ['IN_PROGRESS'], changed: true,
-        marksObtained, marksMax: marksObtained === null ? null : 10, marksUpdatedAt: null,
-    });
-    const checked = () => screen.getByRole('radio', { checked: true }).textContent;
-
-    test('shows the maximum and saves a score only after the server confirms it', async () => {
+    test('shows the AI score and attempts, and a shortcut to the latest report', async () => {
         api.myQuestions.mockResolvedValue(page([question()]));
         api.mySummary.mockResolvedValue(summary);
-        let resolve!: (v: unknown) => void;
-        api.setMyScore.mockReturnValue(new Promise(r => { resolve = r; }));
+        speakingApi.summary.mockResolvedValue(speakingSummary({ q1: stats() }));
         render(<StudentQuestionsPanel courseId="c1" />);
+        expect(await screen.findByLabelText(/Best score 9 out of 10, latest 7/)).toBeTruthy();
+        expect(screen.getByText('3 attempts')).toBeTruthy();
+        expect(screen.getAllByText('Assessment completed').length).toBeGreaterThan(0);
 
-        const input = await screen.findByLabelText(/Your score for .What is React\?., out of 10/);
-        expect(screen.getByText('Out of 10 marks')).toBeTruthy();
-        fireEvent.change(input, { target: { value: '9' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        expect(api.setMyScore).toHaveBeenCalledWith('c1', 'q1', 9, 0);
-        expect(screen.getByText('Saving…')).toBeTruthy();
-
-        resolve(scored(9, 1));
-        expect(await screen.findByText('Score saved: 9 / 10')).toBeTruthy();
-        // A saved score moves NOT_STARTED to Completed (server-confirmed).
-        expect(checked()).toBe('Completed');
+        fireEvent.click(screen.getByRole('button', { name: /View latest report: What is React\?/ }));
+        expect(await screen.findByText('practice:q1:true')).toBeTruthy();
     });
 
-    test('restores a saved score on load', async () => {
-        api.myQuestions.mockResolvedValue(page([question({ progress: { ...question().progress, status: 'COMPLETED', version: 3, marksObtained: 8.5, marksMax: 10 } })]));
-        api.mySummary.mockResolvedValue(summary);
-        render(<StudentQuestionsPanel courseId="c1" />);
-        const input = await screen.findByLabelText(/Your score for/) as HTMLInputElement;
-        expect(input.value).toBe('8.5');
-        expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy();
-    });
-
-    test.each([['11', /more than 10/], ['-2', /negative/], ['nine', /number/]])('blocks invalid input %s without calling the server', async (value, message) => {
+    test('opens the practice view from the main button', async () => {
         api.myQuestions.mockResolvedValue(page([question()]));
         api.mySummary.mockResolvedValue(summary);
         render(<StudentQuestionsPanel courseId="c1" />);
-        fireEvent.change(await screen.findByLabelText(/Your score for/), { target: { value } });
-        expect(screen.getByRole('alert').textContent).toMatch(message);
-        expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
-        expect(api.setMyScore).not.toHaveBeenCalled();
+        fireEvent.click(await screen.findByRole('button', { name: /Start practicing: What is React\?/ }));
+        expect(await screen.findByText('practice:q1:false')).toBeTruthy();
     });
 
-    test('keeps the saved score when the server rejects a change', async () => {
-        api.myQuestions.mockResolvedValue(page([question({ progress: { ...question().progress, status: 'COMPLETED', version: 1, marksObtained: 7, marksMax: 10 } })]));
+    test('shows an assessment in progress', async () => {
+        api.myQuestions.mockResolvedValue(page([question()]));
         api.mySummary.mockResolvedValue(summary);
-        api.setMyScore.mockRejectedValue({ response: { data: { error: { message: 'Network down' } } } });
+        speakingApi.summary.mockResolvedValue(speakingSummary({ q1: stats({ latestStatus: 'TRANSCRIBING', completedAttempts: 0, totalAttempts: 1, bestScore: null, latestScore: null }) }));
         render(<StudentQuestionsPanel courseId="c1" />);
-        const input = await screen.findByLabelText(/Your score for/) as HTMLInputElement;
-        fireEvent.change(input, { target: { value: '9' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Network down'));
-        expect(screen.queryByText(/Score saved/)).toBeNull();
+        expect(await screen.findByRole('button', { name: /View progress: What is React\?/ })).toBeTruthy();
+        expect(screen.getAllByText('Assessment processing').length).toBeGreaterThan(0);
     });
 
-    test('assignments have no marks input, and a passed question shows its score read-only', async () => {
+    test('shows a saved score read-only, and an instructor outcome', async () => {
         api.myQuestions.mockResolvedValue(page([
-            question({ id: 'a1', type: 'assignment', title: 'Build a form', maxMarks: null }),
-            question({ id: 'q2', title: 'Closures', maxMarks: 100, progress: { ...question().progress, status: 'PASS', version: 4, allowedStudentStatuses: [], marksObtained: 85, marksMax: 100 } }),
+            question({ progress: { ...question().progress, status: 'PASS', version: 4, allowedStudentStatuses: [], marksObtained: 85, marksMax: 100 }, maxMarks: 100 }),
         ]));
         api.mySummary.mockResolvedValue(summary);
         render(<StudentQuestionsPanel courseId="c1" />);
-        await screen.findByText('Build a form');
-        expect(screen.queryByLabelText(/Your score for .Build a form./)).toBeNull();
-        expect(screen.getByText('85 / 100')).toBeTruthy();
-        expect(screen.queryByLabelText(/Your score for .Closures./)).toBeNull();
+        expect(await screen.findByText('85 / 100')).toBeTruthy();
+        expect(screen.getByText('Passed', { selector: 'span' })).toBeTruthy();
+        expect(screen.queryByLabelText(/Your score/)).toBeNull();
     });
-});
 
-describe('ProgressMatrix', () => {
-    test('distinguishes no response from a zero score', async () => {
-        api.progressSummary.mockResolvedValue({
-            courseId: 'c1', courseTitle: 'React Prep', totalStudents: 2, totalQuestions: 2,
-            questionsByType: { audio_question: 2, assignment: 0 },
-            statusTotals: { NOT_STARTED: 0, IN_PROGRESS: 0, COMPLETED: 2, PASS: 0, FAIL: 0 },
-            studentsStarted: 2, studentsFinished: 0, averagePercentFinished: 50, percentPairsFinished: 50, percentPairsPassed: 0, lastActivity: null,
-        });
-        api.progressStudents.mockResolvedValue({ data: [], meta: { page: 1, limit: 25, total: 0, totalPages: 0 }, totalQuestions: 2 });
-        api.progressMatrix.mockResolvedValue({
-            questions: [
-                { id: 'q1', title: 'What is React?', type: 'audio_question', topic: null, maxMarks: 10, displayOrder: 0 },
-                { id: 'q2', title: 'Closures', type: 'audio_question', topic: null, maxMarks: 100, displayOrder: 1 },
-            ],
-            questionTotal: 2,
-            data: [
-                { userId: 'u1', name: 'Alice', email: null, cells: { q1: { status: 'COMPLETED', updatedAt: null, marksObtained: 9, marksMax: 10, marksUpdatedAt: null } } },
-                { userId: 'u2', name: 'Bob', email: null, cells: { q1: { status: 'COMPLETED', updatedAt: null, marksObtained: 0, marksMax: 10, marksUpdatedAt: null } } },
-            ],
-            meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
-        });
-        render(<ProgressDashboard courseId="c1" />);
-        fireEvent.click(await screen.findByRole('tab', { name: 'Question grid' }));
-
-        const alice = (await screen.findByText('Alice')).closest('tr')!;
-        const bob = screen.getByText('Bob').closest('tr')!;
-        expect(within(alice).getByText('9 / 10')).toBeTruthy();
-        expect(within(bob).getByText('0 / 10')).toBeTruthy();
-        expect(within(alice).getByText('Not started, no response')).toBeTruthy();
-
-        fireEvent.change(screen.getByLabelText('Students with a question in status'), { target: { value: 'PASS' } });
-        await waitFor(() => expect(api.progressMatrix).toHaveBeenLastCalledWith('c1', expect.objectContaining({ status: 'PASS', page: 1 })));
+    test('formatMarks keeps trailing zeros out', () => {
+        expect(formatMarks(8.5, 10)).toBe('8.5 / 10');
+        expect(formatMarks(9, 10)).toBe('9 / 10');
     });
 });

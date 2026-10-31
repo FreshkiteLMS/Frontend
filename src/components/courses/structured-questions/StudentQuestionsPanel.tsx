@@ -14,16 +14,21 @@ import {
     type QuestionType,
     type StudentQuestion,
 } from '@/types/structured-questions';
-import { formatDateTime, formatDueDate, formatMarks, isOverdue, percent, studentActions } from '@/lib/question-progress';
+import { formatDateTime, formatDueDate, isOverdue, percent, studentActions } from '@/lib/question-progress';
 import { QuestionStatusBadge } from './QuestionStatusBadge';
-import { MarksInput } from './MarksInput';
+import { AudioQuestionCard } from './AudioQuestionCard';
 import { StatusStepper } from './StatusStepper';
 import { Pagination } from './Pagination';
 import { useDebouncedValue } from './useDebouncedValue';
+import { speakingService } from '@/services/api/speaking.api';
+import type { SpeakingSummary } from '@/types/speaking';
+import { PracticeSummary } from '../speaking/PracticeSummary';
+import { SpeakingPractice } from '../speaking/SpeakingPractice';
 
 const PAGE_SIZE = 15;
 const FILTER_KEY = (courseId: string) => `sq-filters:${courseId}`;
 const SAVED_FLASH_MS = 2000;
+const PRACTICE_KEY = (courseId: string) => `sq-practice:${courseId}`;
 
 interface Filters { search: string; type: QuestionType | ''; topic: string; status: QuestionStatus | ''; sort: 'order' | 'title' | 'status' }
 const DEFAULT_FILTERS: Filters = { search: '', type: '', topic: '', status: '', sort: 'order' };
@@ -118,6 +123,10 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
     const inFlight = useRef<Set<string>>(new Set());
     const hydrated = useRef(false);
     const q = useDebouncedValue(filters.search.trim());
+    const [speaking, setSpeaking] = useState<SpeakingSummary | null>(null);
+    // The audio question open in the practice view (restored after a refresh).
+    const [practicing, setPracticing] = useState<StudentQuestion | null>(null);
+    const [openLatest, setOpenLatest] = useState(false);
 
     useEffect(() => {
         setFilters(readFilters(courseId));
@@ -154,8 +163,45 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
         }
     }, [courseId, q, filters.type, filters.topic, filters.status, filters.sort, page]);
 
+    const loadSpeaking = useCallback(async () => {
+        try {
+            setSpeaking(await speakingService.summary(courseId));
+        } catch {
+            // Supplementary: the question list still works without practice stats.
+        }
+    }, [courseId]);
+
+    const openPractice = useCallback(async (questionId: string, latestReport = false) => {
+        try {
+            const found = items.find(x => x.id === questionId) ?? await structuredCourseService.myQuestion(courseId, questionId);
+            setOpenLatest(latestReport);
+            setPracticing(found);
+            try { sessionStorage.setItem(PRACTICE_KEY(courseId), questionId); } catch { /* storage unavailable */ }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (err) {
+            toast.error(apiErrorMessage(err, 'Could not open this question.'));
+        }
+    }, [courseId, items]);
+
+    const closePractice = () => {
+        setPracticing(null);
+        try { sessionStorage.removeItem(PRACTICE_KEY(courseId)); } catch { /* storage unavailable */ }
+        load();
+        loadSummary();
+        loadSpeaking();
+    };
+
     useEffect(() => { load(); }, [load]);
     useEffect(() => { loadSummary(); }, [loadSummary]);
+    useEffect(() => { loadSpeaking(); }, [loadSpeaking]);
+    useEffect(() => {
+        let id: string | null = null;
+        try { id = sessionStorage.getItem(PRACTICE_KEY(courseId)); } catch { /* storage unavailable */ }
+        if (!id) return;
+        structuredCourseService.myQuestion(courseId, id).then(setPracticing, () => {
+            try { sessionStorage.removeItem(PRACTICE_KEY(courseId)); } catch { /* storage unavailable */ }
+        });
+    }, [courseId]);
     useEffect(() => { setPage(1); }, [q, filters.type, filters.topic, filters.status, filters.sort]);
 
     const applyProgress = (questionId: string, progress: Partial<QuestionProgress>) =>
@@ -200,36 +246,6 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
         }
     };
 
-    // Shares the per-question in-flight guard with status changes: both write
-    // the same versioned record, so they must not race each other.
-    const updateScore = async (question: StudentQuestion, marks: number | null) => {
-        if (readOnly || inFlight.current.has(question.id)) return;
-        inFlight.current.add(question.id);
-        setPending(prev => new Set(prev).add(question.id));
-        try {
-            const res = await structuredCourseService.setMyScore(courseId, question.id, marks, question.progress.version);
-            applyProgress(question.id, res);
-            flashSaved(question.id, res.marksObtained === null ? 'Score cleared' : `Score saved: ${formatMarks(res.marksObtained, res.marksMax)}`);
-            loadSummary();
-            if (filters.status && filters.status !== res.status) load();
-        } catch (err) {
-            const latest = apiErrorDetails<{ progress?: QuestionProgress }>(err)?.progress;
-            if (latest) applyProgress(question.id, latest);
-            if (apiErrorCode(err) === 'VERSION_CONFLICT' && latest) {
-                toast(apiErrorMessage(err, 'This question changed elsewhere. The latest score is now shown.'), { icon: 'ℹ️' });
-            } else {
-                toast.error(apiErrorMessage(err, 'Could not save your score. Nothing was changed — please try again.'));
-            }
-        } finally {
-            inFlight.current.delete(question.id);
-            setPending(prev => {
-                const next = new Set(prev);
-                next.delete(question.id);
-                return next;
-            });
-        }
-    };
-
     const set = <K extends keyof Filters>(key: K, value: Filters[K]) => setFilters(prev => ({ ...prev, [key]: value }));
     const toggle = (id: string) => setExpanded(prev => {
         const next = new Set(prev);
@@ -244,18 +260,31 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
         { id: 'assignment', label: 'Assignments', count: summary?.byType.assignment.total },
     ];
 
+    if (practicing) {
+        return (
+            <SpeakingPractice
+                courseId={courseId}
+                question={practicing}
+                readOnly={readOnly}
+                openLatest={openLatest}
+                onBack={closePractice}
+                onChanged={loadSpeaking}
+            />
+        );
+    }
+
     return (
         <section aria-labelledby="sq-heading" className="space-y-6">
             <header>
                 <h2 id="sq-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Questions &amp; Assignments</h2>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Practise the audio questions out loud and work through the assignments. Move each one from
-                    <em> Not started</em> to <em>In progress</em> to <em>Completed</em> — your instructor records pass/fail.
-                    After answering an audio question, record the score you gave yourself.
+                    Record spoken answers to the audio questions and get instant AI feedback, then work through the assignments.
+                    Move each one from <em>Not started</em> to <em>In progress</em> to <em>Completed</em> — your instructor records pass/fail.
                 </p>
             </header>
 
             {summary && <ProgressOverview summary={summary} />}
+            {speaking && <PracticeSummary summary={speaking} onOpenQuestion={id => void openPractice(id)} />}
 
             <div className="space-y-3">
                 <div role="tablist" aria-label="Question type" className="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800">
@@ -364,14 +393,27 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
             ) : (
                 <ul className={`space-y-3 transition-opacity ${loading ? 'opacity-60' : ''}`}>
                     {items.map((question, idx) => {
+                        const number = (page - 1) * PAGE_SIZE + idx + 1;
+                        // Audio questions are practice-first: status and score come from the
+                        // student's AI practice, so there is nothing to tick or type.
+                        if (question.type === 'audio_question') {
+                            return (
+                                <AudioQuestionCard
+                                    key={question.id}
+                                    question={question}
+                                    number={number}
+                                    practice={speaking?.byQuestion[question.id]}
+                                    readOnly={readOnly}
+                                    onOpen={latest => void openPractice(question.id, latest)}
+                                />
+                            );
+                        }
                         const isOpen = expanded.has(question.id);
                         const isPending = pending.has(question.id);
-                        const Icon = question.type === 'audio_question' ? Mic : ClipboardList;
                         const allowed = studentActions(question.progress.status, question.progress.allowedStudentStatuses).map(a => a.status);
                         const done = ['COMPLETED', 'PASS', 'FAIL'].includes(question.progress.status);
-                        const overdue = question.type === 'assignment' && isOverdue(question.dueDate) && !done;
+                        const overdue = isOverdue(question.dueDate) && !done;
                         const detailId = `sq-detail-${question.id}`;
-                        const number = (page - 1) * PAGE_SIZE + idx + 1;
                         return (
                             <li
                                 key={question.id}
@@ -392,7 +434,7 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
                                         className="flex flex-1 min-w-0 items-start gap-3 text-left"
                                     >
                                         <span className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${done ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300' : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300'}`}>
-                                            {done ? <Check className="h-5 w-5" aria-hidden="true" /> : <Icon className="h-5 w-5" aria-hidden="true" />}
+                                            {done ? <Check className="h-5 w-5" aria-hidden="true" /> : <ClipboardList className="h-5 w-5" aria-hidden="true" />}
                                         </span>
                                         <span className="min-w-0">
                                             <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-400">
@@ -407,9 +449,6 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
                                                     <span className={`inline-flex items-center gap-1 ${overdue ? 'text-red-600 dark:text-red-400 font-medium' : ''}`}>
                                                         <CalendarClock className="w-3.5 h-3.5" aria-hidden="true" />Due {formatDueDate(question.dueDate)}{overdue ? ' (overdue)' : ''}
                                                     </span>
-                                                )}
-                                                {question.maxMarks !== null && (
-                                                    <span className="inline-flex items-center gap-1">Out of {formatMarks(question.maxMarks, null)} marks</span>
                                                 )}
                                                 <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
                                                     {isOpen ? 'Hide details' : 'View details'}
@@ -431,18 +470,6 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
                                                 label={`Status of “${question.title}”`}
                                             />
                                         )}
-                                        {question.type === 'audio_question' && question.maxMarks !== null && (
-                                            <MarksInput
-                                                maxMarks={question.maxMarks}
-                                                marksObtained={question.progress.marksObtained ?? null}
-                                                marksMax={question.progress.marksMax ?? null}
-                                                busy={isPending}
-                                                readOnly={readOnly || question.progress.status === 'PASS'}
-                                                lockedReason={question.progress.status === 'PASS' ? 'locked after passing' : undefined}
-                                                onSave={m => updateScore(question, m)}
-                                                label={`Your score for “${question.title}”, out of ${question.maxMarks}`}
-                                            />
-                                        )}
                                         <span className="min-h-[1rem] text-[11px] text-gray-400" aria-live="polite">
                                             {isPending ? 'Saving…' : savedFlash[question.id] ? (
                                                 <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400"><Check className="w-3 h-3" aria-hidden="true" />{savedFlash[question.id]}</span>
@@ -454,12 +481,12 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
                                 {isOpen && (
                                     <div id={detailId} className="border-t border-gray-100 dark:border-gray-800 px-4 py-4 md:pl-16 space-y-4 text-sm text-gray-700 dark:text-gray-300">
                                         <div>
-                                            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">{question.type === 'assignment' ? 'Instructions' : 'Question'}</h3>
+                                            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Instructions</h3>
                                             <p className="whitespace-pre-wrap leading-relaxed">{question.prompt}</p>
                                         </div>
                                         {question.evaluationCriteria && (
                                             <div>
-                                                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">{question.type === 'assignment' ? 'Requirements & acceptance criteria' : 'What a good answer covers'}</h3>
+                                                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Requirements &amp; acceptance criteria</h3>
                                                 <p className="whitespace-pre-wrap leading-relaxed">{question.evaluationCriteria}</p>
                                             </div>
                                         )}
