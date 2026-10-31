@@ -1,4 +1,5 @@
 import { MeetingOccurrence } from '@/types/meeting';
+import { formatDayLabel, formatTime } from '@/stores/preferences-store';
 
 /** Human label for a recurrence rule string, e.g. "Weekly on Mon, Wed". */
 export function recurrenceLabel(rule?: string | null): string {
@@ -25,14 +26,12 @@ export function recurrenceLabel(rule?: string | null): string {
 }
 
 export function formatOccurrenceTime(occ: MeetingOccurrence): string {
-    const start = new Date(occ.start);
-    const end = new Date(occ.end);
-    const t = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    return `${t(start)} – ${t(end)}`;
+    // The user's timezone / 12-24h preference (device zone by default).
+    return `${formatTime(occ.start)} – ${formatTime(occ.end)}`;
 }
 
 export function formatOccurrenceDate(occ: MeetingOccurrence): string {
-    return new Date(occ.start).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    return formatDayLabel(occ.start);
 }
 
 /** Minutes until the occurrence starts (negative if past). */

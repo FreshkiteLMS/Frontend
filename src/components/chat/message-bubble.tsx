@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
     AlertTriangle,
-    Check,
     CheckCheck,
     CheckCircle2,
     ChevronDown,
@@ -15,11 +14,12 @@ import {
     FileText,
     Flag,
     Forward,
+    ImageOff,
+    Info,
     MessageSquare,
     Pencil,
     Pin,
     PinOff,
-    Plus,
     RefreshCw,
     Star,
     StarOff,
@@ -39,7 +39,10 @@ import {
 } from '@/lib/chat-utils';
 import type { ChatAttachment, ChatConversation, ChatMessage } from '@/types/chat';
 import { AudioPlayer } from '@/components/chat/audio-player';
-import { ReactionPicker } from '@/components/chat/reaction-picker';
+import { ReactionChips } from '@/components/chat/reaction-chips';
+import { ImageLightbox } from '@/components/chat/image-lightbox';
+import { MessageInfoModal } from '@/components/chat/message-info-modal';
+import { FloatingMenu, type MenuAnchor } from '@/components/ui/floating-menu';
 import { ForwardModal } from '@/components/chat/forward-modal';
 import { ReportModal } from '@/components/chat/report-modal';
 import { PollMessage } from '@/components/chat/poll-message';
@@ -101,7 +104,6 @@ export function MessageBubble({
 
     const setReplyTarget = useChatStore((s) => s.setReplyTarget);
     const setEditingMessage = useChatStore((s) => s.setEditingMessage);
-    const reactToMessage = useChatStore((s) => s.reactToMessage);
     const deleteMessage = useChatStore((s) => s.deleteMessage);
     const pinMessage = useChatStore((s) => s.pinMessage);
     const starMessage = useChatStore((s) => s.starMessage);
@@ -109,16 +111,25 @@ export function MessageBubble({
     const acceptAnswer = useChatStore((s) => s.acceptAnswer);
     const loadThread = useChatStore((s) => s.loadThread);
     const retrySend = useChatStore((s) => s.retrySend);
+    const discardFailed = useChatStore((s) => s.discardFailed);
+    const jumpToMessage = useChatStore((s) => s.jumpToMessage);
+    const clearHighlight = useChatStore((s) => s.clearHighlight);
+    const highlighted = useChatStore((s) => s.highlightMessageId === message.id);
 
     const [menuOpen, setMenuOpen] = useState(false);
-    const [pickerOpen, setPickerOpen] = useState(false);
+    const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+    // Time the menu was opened — decides whether Edit is still allowed.
+    const [menuOpenedAt, setMenuOpenedAt] = useState(0);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [forwardOpen, setForwardOpen] = useState(false);
     const [reportOpen, setReportOpen] = useState(false);
-    const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+    const [infoOpen, setInfoOpen] = useState(false);
+    const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+    const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
     const longPressRef = useRef<number | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const bubbleRef = useRef<HTMLDivElement | null>(null);
 
     const myId = user?.id || '';
     const isOwn = mounted && !!myId && message.sender_id === myId;
@@ -163,6 +174,16 @@ export function MessageBubble({
             if (longPressRef.current) window.clearTimeout(longPressRef.current);
         };
     }, []);
+
+    // Reply-quote navigation: once the original is loaded, bring it into view.
+    useEffect(() => {
+        if (!highlighted) return;
+        const id = window.setTimeout(() => {
+            scrollToMessage(message.id);
+            clearHighlight();
+        }, 50);
+        return () => window.clearTimeout(id);
+    }, [highlighted, message.id, clearHighlight]);
 
     // -----------------------------------------------------------------------
     // System messages → centered pill
@@ -261,19 +282,27 @@ export function MessageBubble({
         }
     };
 
-    const onReact = (emoji: string) => {
-        setPickerOpen(false);
-        reactToMessage(message.id, emoji).catch(() => undefined);
+    /** Open the actions menu next to the bubble, or at the pointer for right-click. */
+    const openMenu = (point?: { x: number; y: number }) => {
+        if (deleted || pending) return;
+        const rect = bubbleRef.current?.getBoundingClientRect();
+        if (!point && !rect) return;
+        setMenuAnchor(point ? { kind: 'point', ...point } : { kind: 'rect', rect: rect!, align: isOwn ? 'end' : 'start' });
+        setMenuOpenedAt(Date.now());
+        setMenuOpen(true);
     };
 
-    const openMenu = () => {
-        if (deleted) return;
-        setMenuOpen(true);
+    const onReplyQuoteClick = async () => {
+        const targetId = message.reply_to?.message_id;
+        if (!targetId || message.reply_to?.deleted) return;
+        if (scrollToMessage(targetId)) return;
+        const found = await jumpToMessage(targetId);
+        if (!found) toast('The original message is no longer available');
     };
 
     const onTouchStart = () => {
         if (deleted) return;
-        longPressRef.current = window.setTimeout(() => setMenuOpen(true), 500);
+        longPressRef.current = window.setTimeout(() => openMenu(), 500);
     };
     const cancelLongPress = () => {
         if (longPressRef.current) {
@@ -288,8 +317,12 @@ export function MessageBubble({
     const starred = message.starred_by?.includes(myId) ?? false;
     const upvoted = message.upvoted_by?.includes(myId) ?? false;
     const reactionsEnabled = conversation.settings?.reactions_enabled !== false;
-    const canEdit = isOwn && !deleted && message.type === 'text';
+    // Own text (or captioned media) messages, within the server's 24h edit window.
+    const canEdit = isOwn && !deleted && !pending && !failed && !!message.content
+        && !['system', 'poll', 'event'].includes(message.type)
+        && menuOpenedAt - new Date(message.created_at).getTime() < EDIT_WINDOW_MS;
     const canDeleteEveryone = isOwn || isModerator;
+    const canSeeInfo = isOwn && !pending && !failed && !deleted;
 
     const images = (message.attachments || []).filter((a) => IMAGE_RE.test(a.mime_type));
     const videos = (message.attachments || []).filter((a) => VIDEO_RE.test(a.mime_type));
@@ -298,6 +331,13 @@ export function MessageBubble({
         (a) => !IMAGE_RE.test(a.mime_type) && !VIDEO_RE.test(a.mime_type) && !AUDIO_RE.test(a.mime_type),
     );
 
+    // Photos/videos with nothing else render without a coloured bubble.
+    const mediaOnly = !deleted && !message.content && !message.reply_to && !message.poll_id && !message.event_id
+        && !message.forwarded_from && !message.is_sticky && message.priority === 'normal'
+        && images.length + videos.length > 0 && files.length === 0 && audios.length === 0;
+
+    const lightboxImages = images.map((a) => ({ src: resolveFileUrl(a.url), alt: a.file_name || 'Image', fileName: a.file_name }));
+
     const priorityClass =
         message.priority === 'urgent'
             ? 'border-l-4 border-red-500'
@@ -305,11 +345,42 @@ export function MessageBubble({
               ? 'border-l-4 border-amber-500'
               : '';
 
-    const bubbleBase = isOwn
-        ? 'bg-blue-600 text-white'
-        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100';
+    // Own messages use a light tint so grey (sent) and blue (read) ticks stay distinguishable.
+    const bubbleBase = mediaOnly
+        ? ''
+        : isOwn
+          ? 'bg-blue-50 dark:bg-blue-950/70 border border-blue-100 dark:border-blue-900/80 text-gray-900 dark:text-gray-100'
+          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100';
 
-    const metaColor = isOwn ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500';
+    const metaColor = 'text-gray-400 dark:text-gray-500';
+
+    // Delivery state for your own messages (every conversation type):
+    // pending → clock, failed → warning, sent/delivered → two grey ticks,
+    // read by every recipient → two blue ticks.
+    const recipients = message.recipient_count ?? 0;
+    const readAll = recipients > 0
+        ? (message.read_count ?? 0) >= recipients
+        : isDirect && (message.read_by?.length ?? 0) > 0;
+    const tickIcon = failed
+        ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" aria-label="Not sent" />
+        : pending
+          ? <Clock className="w-3 h-3" aria-label="Sending" />
+          : readAll
+            ? <CheckCheck className="w-4 h-4 text-blue-500 dark:text-sky-400" aria-label="Read" />
+            : <CheckCheck className="w-4 h-4" aria-label="Sent" />;
+    const metaRow = (
+        <>
+            {isAcceptedAnswer && (
+                <span className="mr-auto inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-green-600 dark:text-green-400">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Accepted
+                </span>
+            )}
+            {message.edited_at && !deleted && <span className="text-[10px] italic">edited</span>}
+            <span className="text-[10px]">{formatMessageTime(message.created_at)}</span>
+            {isOwn && !deleted && tickIcon}
+        </>
+    );
 
     return (
         <div
@@ -343,25 +414,28 @@ export function MessageBubble({
 
                 {/* Bubble */}
                 <div
+                    ref={bubbleRef}
                     onContextMenu={(e) => {
                         e.preventDefault();
-                        openMenu();
+                        openMenu({ x: e.clientX, y: e.clientY });
                     }}
                     onTouchStart={onTouchStart}
                     onTouchEnd={cancelLongPress}
                     onTouchMove={cancelLongPress}
-                    className={`relative rounded-2xl px-3 py-2 shadow-sm break-words ${bubbleBase} ${priorityClass} ${
+                    className={`relative rounded-2xl break-words ${mediaOnly ? 'overflow-hidden' : 'px-3 py-2 shadow-sm'} ${bubbleBase} ${priorityClass} ${
                         message.is_sticky ? 'ring-2 ring-amber-400 dark:ring-amber-500' : ''
                     } ${pending ? 'opacity-70' : ''} ${failed ? 'ring-1 ring-red-400' : ''}`}
                 >
                     {/* Hover chevron (desktop) */}
                     {!deleted && (
                         <button
-                            onClick={openMenu}
-                            className={`chat-message-menu hidden md:flex absolute top-1 ${isOwn ? 'left-1' : 'right-1'} p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
-                                isOwn ? 'hover:bg-blue-700 text-blue-100' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 dark:text-gray-500'
+                            onClick={() => (menuOpen ? closeMenu() : openMenu())}
+                            className={`chat-message-menu hidden md:flex absolute z-10 top-1 ${isOwn ? 'left-1' : 'right-1'} p-1 rounded-full transition-opacity ${menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} ${
+                                mediaOnly ? 'bg-black/40 text-white hover:bg-black/60' : 'bg-white/80 dark:bg-gray-900/70 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'
                             }`}
                             aria-label="Message actions"
+                            aria-haspopup="menu"
+                            aria-expanded={menuOpen}
                         >
                             <ChevronDown className="w-4 h-4" />
                         </button>
@@ -383,7 +457,7 @@ export function MessageBubble({
                                 </span>
                             )}
                             {message.is_sticky && (
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${isOwn ? 'text-blue-100' : 'text-amber-600 dark:text-amber-400'}`}>
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
                                     <Pin className="w-3 h-3" />
                                     Sticky
                                 </span>
@@ -400,29 +474,31 @@ export function MessageBubble({
 
                     {/* Deleted tombstone */}
                     {deleted ? (
-                        <p className={`text-sm italic ${isOwn ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
-                            This message was deleted
+                        <p className="text-sm italic text-gray-500 dark:text-gray-400">
+                            {isOwn ? 'You deleted this message' : 'This message was deleted'}
                         </p>
                     ) : (
                         <>
                             {/* Reply quote */}
                             {message.reply_to && (
                                 <button
-                                    onClick={() => {
-                                        const ok = scrollToMessage(message.reply_to!.message_id);
-                                        if (!ok) toast('Original message is not loaded yet');
-                                    }}
-                                    className={`block w-full text-left border-l-2 pl-2 py-1 mb-1.5 rounded-r ${
-                                        isOwn
-                                            ? 'border-blue-300 bg-blue-500/40'
-                                            : 'border-blue-500 bg-gray-50 dark:bg-gray-700/60'
-                                    }`}
+                                    onClick={() => void onReplyQuoteClick()}
+                                    disabled={message.reply_to.deleted}
+                                    title={message.reply_to.deleted ? undefined : 'Go to the original message'}
+                                    className={`flex w-full min-w-[10rem] items-stretch gap-2 text-left rounded-lg overflow-hidden mb-1.5 transition-colors ${
+                                        isOwn ? 'bg-blue-100/80 dark:bg-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-900/70' : 'bg-gray-100 dark:bg-gray-700/60 hover:bg-gray-200/70 dark:hover:bg-gray-700'
+                                    } disabled:cursor-default`}
                                 >
-                                    <span className={`block text-[11px] font-semibold truncate ${isOwn ? 'text-blue-50' : 'text-blue-600 dark:text-blue-400'}`}>
-                                        {message.reply_to.sender_name}
-                                    </span>
-                                    <span className={`block text-xs truncate ${isOwn ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
-                                        {message.reply_to.preview || 'Attachment'}
+                                    <span className={`w-1 shrink-0 ${avatarColorFor(message.reply_to.sender_id)}`} />
+                                    <span className="min-w-0 py-1.5 pr-2">
+                                        <span className="block text-[11px] font-semibold truncate text-blue-700 dark:text-blue-300">
+                                            {message.reply_to.sender_id === myId ? 'You' : message.reply_to.sender_name}
+                                        </span>
+                                        <span className="block text-xs truncate text-gray-600 dark:text-gray-300">
+                                            {message.reply_to.deleted
+                                                ? <span className="italic text-gray-400">Original message was deleted</span>
+                                                : message.reply_to.preview || 'Attachment'}
+                                        </span>
                                     </span>
                                 </button>
                             )}
@@ -432,17 +508,43 @@ export function MessageBubble({
                             {message.event_id && <EventCard eventId={message.event_id} message={message} />}
 
                             {/* Images */}
-                            {images.length > 0 && (
-                                <div className={`grid gap-1.5 mb-1.5 ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                                    {images.map((att) => (
-                                        <img
+                            {images.length === 1 && (
+                                <MessageImage
+                                    att={images[0]}
+                                    broken={brokenImages[images[0].id]}
+                                    onBroken={() => setBrokenImages((b) => ({ ...b, [images[0].id]: true }))}
+                                    onOpen={() => setLightboxIndex(0)}
+                                    className={mediaOnly ? '' : 'mb-1.5'}
+                                />
+                            )}
+                            {images.length > 1 && (
+                                <div className={`grid grid-cols-2 gap-1 w-[17rem] max-w-full ${mediaOnly ? '' : 'mb-1.5'}`}>
+                                    {images.slice(0, 4).map((att, i) => (
+                                        <button
                                             key={att.id}
-                                            src={resolveFileUrl(att.url)}
-                                            alt={att.file_name}
-                                            loading="lazy"
-                                            onClick={() => setViewerUrl(resolveFileUrl(att.url))}
-                                            className="rounded-xl object-cover w-full max-h-64 cursor-zoom-in bg-gray-100 dark:bg-gray-700"
-                                        />
+                                            onClick={() => setLightboxIndex(i)}
+                                            className="relative aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800"
+                                            aria-label={`Open image ${i + 1} of ${images.length}`}
+                                        >
+                                            {brokenImages[att.id] ? (
+                                                <ImageOff className="absolute inset-0 m-auto w-6 h-6 text-gray-400" />
+                                            ) : (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img
+                                                    src={resolveFileUrl(att.url)}
+                                                    alt={att.file_name}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    onError={() => setBrokenImages((b) => ({ ...b, [att.id]: true }))}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            )}
+                                            {i === 3 && images.length > 4 && (
+                                                <span className="absolute inset-0 bg-black/55 text-white text-xl font-semibold flex items-center justify-center">
+                                                    +{images.length - 4}
+                                                </span>
+                                            )}
+                                        </button>
                                     ))}
                                 </div>
                             )}
@@ -454,7 +556,7 @@ export function MessageBubble({
                                     src={resolveFileUrl(att.url)}
                                     controls
                                     preload="metadata"
-                                    className="rounded-xl w-full max-h-72 mb-1.5 bg-black"
+                                    className={`rounded-xl max-w-full max-h-80 bg-black ${mediaOnly ? '' : 'mb-1.5'}`}
                                 />
                             ))}
 
@@ -475,16 +577,12 @@ export function MessageBubble({
                                     download={att.file_name}
                                     className={`flex items-center gap-2 p-2 mb-1.5 rounded-xl transition-colors ${
                                         isOwn
-                                            ? 'bg-blue-500/40 hover:bg-blue-500/60'
+                                            ? 'bg-blue-100/80 dark:bg-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-900/70'
                                             : 'bg-gray-50 dark:bg-gray-700/60 hover:bg-gray-100 dark:hover:bg-gray-700'
                                     }`}
                                 >
-                                    <span
-                                        className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                                            isOwn ? 'bg-blue-400/40' : 'bg-white dark:bg-gray-800'
-                                        }`}
-                                    >
-                                        <FileText className={`w-4 h-4 ${isOwn ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`} />
+                                    <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-white dark:bg-gray-800">
+                                        <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                                     </span>
                                     <span className="min-w-0 flex-1">
                                         <span className="block text-xs font-semibold truncate">{att.file_name}</span>
@@ -505,7 +603,7 @@ export function MessageBubble({
                                                     href={seg.href}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className={`underline break-all ${isOwn ? 'text-blue-100 hover:text-white' : 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'}`}
+                                                    className="underline break-all text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                                                 >
                                                     {seg.value}
                                                 </a>
@@ -515,11 +613,7 @@ export function MessageBubble({
                                             return (
                                                 <span
                                                     key={i}
-                                                    className={`font-medium rounded px-0.5 ${
-                                                        isOwn
-                                                            ? 'bg-blue-500/60 text-white'
-                                                            : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                                    }`}
+                                                    className="font-medium rounded px-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
                                                 >
                                                     {seg.value}
                                                 </span>
@@ -532,39 +626,28 @@ export function MessageBubble({
                         </>
                     )}
 
-                    {/* Meta row */}
-                    <div className={`flex items-center justify-end gap-1 mt-1 ${metaColor}`}>
-                        {isAcceptedAnswer && (
-                            <span className="mr-auto inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-green-600 dark:text-green-400">
-                                <CheckCircle2 className="w-3 h-3" />
-                                Accepted
-                            </span>
-                        )}
-                        {message.edited_at && !deleted && <span className="text-[10px]">edited</span>}
-                        <span className="text-[10px]">{formatMessageTime(message.created_at)}</span>
-                        {isOwn && isDirect && !pending && !failed && (
-                            <>
-                                {message.read_by?.length > 0 ? (
-                                    <CheckCheck className="w-3.5 h-3.5 text-blue-200" />
-                                ) : message.delivered_to?.length > 0 ? (
-                                    <CheckCheck className="w-3.5 h-3.5" />
-                                ) : (
-                                    <Check className="w-3.5 h-3.5" />
-                                )}
-                            </>
-                        )}
-                        {pending && <Clock className="w-3 h-3" />}
-                    </div>
+                    {/* Meta row (overlaid on the photo for media-only messages) */}
+                    {mediaOnly ? (
+                        <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded-full bg-black/45 px-2 py-0.5 text-white [&_svg]:text-current">
+                            {metaRow}
+                        </div>
+                    ) : (
+                        <div className={`flex items-center justify-end gap-1 mt-1 ${metaColor}`}>{metaRow}</div>
+                    )}
 
                     {/* Context menu */}
-                    {menuOpen && (
-                        <div
-                            className={`chat-message-menu absolute top-6 ${isOwn ? 'right-0' : 'left-0'} w-56 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200`}
+                    {menuOpen && menuAnchor && (
+                        <FloatingMenu
+                            anchor={menuAnchor}
+                            onClose={closeMenu}
+                            className="chat-message-menu w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 py-1.5"
                         >
                             <MenuItem icon={<CornerUpLeft className="w-4 h-4" />} label="Reply" onClick={onReply} />
                             {!inThread && (
                                 <MenuItem icon={<MessageSquare className="w-4 h-4" />} label="Reply in thread" onClick={onReplyInThread} />
                             )}
+                            {message.content && <MenuItem icon={<Copy className="w-4 h-4" />} label="Copy" onClick={onCopy} />}
+                            {canEdit && <MenuItem icon={<Pencil className="w-4 h-4" />} label="Edit" onClick={onEdit} />}
                             <MenuItem
                                 icon={<Forward className="w-4 h-4" />}
                                 label="Forward"
@@ -573,7 +656,6 @@ export function MessageBubble({
                                     setForwardOpen(true);
                                 }}
                             />
-                            {message.content && <MenuItem icon={<Copy className="w-4 h-4" />} label="Copy" onClick={onCopy} />}
                             <MenuItem
                                 icon={starred ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
                                 label={starred ? 'Unstar' : 'Star'}
@@ -589,7 +671,17 @@ export function MessageBubble({
                             {canAcceptAnswer && (
                                 <MenuItem icon={<CheckCircle2 className="w-4 h-4" />} label="Accept answer" onClick={onAcceptAnswer} />
                             )}
-                            {canEdit && <MenuItem icon={<Pencil className="w-4 h-4" />} label="Edit" onClick={onEdit} />}
+                            {canSeeInfo && (
+                                <MenuItem
+                                    icon={<Info className="w-4 h-4" />}
+                                    label="Message info"
+                                    onClick={() => {
+                                        closeMenu();
+                                        setInfoOpen(true);
+                                    }}
+                                />
+                            )}
+                            <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
                             <MenuItem
                                 icon={<Trash2 className="w-4 h-4" />}
                                 label="Delete"
@@ -610,19 +702,28 @@ export function MessageBubble({
                                     }}
                                 />
                             )}
-                        </div>
+                        </FloatingMenu>
                     )}
                 </div>
 
                 {/* Failed send → retry */}
                 {failed && (
-                    <button
-                        onClick={() => retrySend(message.conversation_id, message.client_temp_id || message.id).catch(() => undefined)}
-                        className="flex items-center gap-1 mt-1 text-[11px] font-semibold text-red-600 dark:text-red-400 hover:underline"
-                    >
-                        <RefreshCw className="w-3 h-3" />
-                        Failed to send — retry
-                    </button>
+                    <div className="flex items-center gap-3 mt-1 text-[11px] font-semibold">
+                        <span className="text-red-600 dark:text-red-400">Not sent.</span>
+                        <button
+                            onClick={() => retrySend(message.conversation_id, message.client_temp_id || message.id).catch(() => undefined)}
+                            className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                            <RefreshCw className="w-3 h-3" />
+                            Retry
+                        </button>
+                        <button
+                            onClick={() => discardFailed(message.conversation_id, message.client_temp_id || message.id)}
+                            className="text-gray-500 dark:text-gray-400 hover:underline"
+                        >
+                            Discard
+                        </button>
+                    </div>
                 )}
 
                 {/* Doubt upvote */}
@@ -652,64 +753,16 @@ export function MessageBubble({
                 )}
 
                 {/* Reactions row */}
-                {!deleted && reactionsEnabled && (
-                    <div className={`relative flex flex-wrap items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                        {(message.reactions || [])
-                            .filter((r) => r.user_ids.length > 0)
-                            .map((r) => {
-                                const mine = r.user_ids.includes(myId);
-                                return (
-                                    <button
-                                        key={r.emoji}
-                                        onClick={() => reactToMessage(message.id, r.emoji).catch(() => undefined)}
-                                        title={`${r.user_ids.length} reaction${r.user_ids.length === 1 ? '' : 's'}`}
-                                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[11px] transition-colors ${
-                                            mine
-                                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 ring-1 ring-blue-400'
-                                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                        }`}
-                                    >
-                                        <span>{r.emoji}</span>
-                                        <span className="font-semibold">{r.user_ids.length}</span>
-                                    </button>
-                                );
-                            })}
-                        <button
-                            onClick={() => setPickerOpen((v) => !v)}
-                            className="flex items-center justify-center w-6 h-6 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-opacity"
-                            aria-label="Add reaction"
-                        >
-                            <Plus className="w-3.5 h-3.5" />
-                        </button>
-
-                        {pickerOpen && (
-                            <div className={`absolute bottom-8 z-50 ${isOwn ? 'right-0' : 'left-0'}`}>
-                                <ReactionPicker onPick={onReact} onClose={() => setPickerOpen(false)} conversationType={conversation?.type} />
-                            </div>
-                        )}
-                    </div>
+                {!deleted && !pending && !failed && reactionsEnabled && (
+                    <ReactionChips message={message} myId={myId} isOwn={isOwn} conversationType={conversation.type} />
                 )}
             </div>
 
             {/* Fullscreen image viewer */}
-            {viewerUrl && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" onClick={() => setViewerUrl(null)}>
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-                    <button
-                        onClick={() => setViewerUrl(null)}
-                        className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white z-10"
-                        aria-label="Close image"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                    <img
-                        src={viewerUrl}
-                        alt="Attachment"
-                        onClick={(e) => e.stopPropagation()}
-                        className="relative max-h-full max-w-full rounded-xl object-contain"
-                    />
-                </div>
+            {lightboxIndex !== null && lightboxImages.length > 0 && (
+                <ImageLightbox images={lightboxImages} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
             )}
+            {infoOpen && <MessageInfoModal message={message} onClose={() => setInfoOpen(false)} />}
 
             {/* Delete scope dialog */}
             {deleteOpen && (
@@ -728,7 +781,7 @@ export function MessageBubble({
                         </div>
                         <div className="p-5 space-y-3">
                             <p className="text-sm text-gray-600 dark:text-gray-300">
-                                Choose who this message should be removed for. This cannot be undone.
+                                &ldquo;Delete for me&rdquo; hides it only on your devices. &ldquo;Delete for everyone&rdquo; removes it for all members. This cannot be undone.
                             </p>
                             <button
                                 onClick={() => onDelete('me')}
@@ -766,8 +819,54 @@ export function MessageBubble({
 }
 
 // ---------------------------------------------------------------------------
-// Local menu item
+// Local components
 // ---------------------------------------------------------------------------
+
+/** How long after sending the author may edit (matches the server rule). */
+const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** A single image at its natural aspect ratio (no cropping), click to open full screen. */
+function MessageImage({
+    att,
+    broken,
+    onBroken,
+    onOpen,
+    className = '',
+}: {
+    att: ChatAttachment;
+    broken?: boolean;
+    onBroken: () => void;
+    onOpen: () => void;
+    className?: string;
+}) {
+    const [loaded, setLoaded] = useState(false);
+    const ratio = att.width && att.height ? att.width / att.height : undefined;
+    if (broken) {
+        return (
+            <div className={`flex items-center gap-2 rounded-xl bg-gray-100 dark:bg-gray-800 px-3 py-6 text-xs text-gray-500 ${className}`}>
+                <ImageOff className="w-5 h-5" /> Image unavailable
+            </div>
+        );
+    }
+    return (
+        <button onClick={onOpen} className={`relative block rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 ${className}`} aria-label={`Open ${att.file_name || 'image'}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+                src={resolveFileUrl(att.url)}
+                alt={att.file_name}
+                width={att.width}
+                height={att.height}
+                loading="lazy"
+                decoding="async"
+                onLoad={() => setLoaded(true)}
+                onError={onBroken}
+                style={ratio ? { aspectRatio: String(ratio) } : undefined}
+                className={`block w-auto h-auto max-w-[min(100%,20rem)] sm:max-w-[22rem] max-h-[22rem] object-contain cursor-zoom-in transition-opacity ${loaded ? 'opacity-100' : 'opacity-0'}`}
+            />
+            {!loaded && <span className="absolute inset-0 animate-pulse bg-gray-200 dark:bg-gray-700" />}
+        </button>
+    );
+}
 
 function MenuItem({
     icon,
@@ -782,6 +881,7 @@ function MenuItem({
 }) {
     return (
         <button
+            role="menuitem"
             onClick={onClick}
             className={`w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium transition-colors ${
                 danger

@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Clock, Loader2, Megaphone, MessageSquarePlus, Plus, Users } from 'lucide-react';
+import { AlertTriangle, Clock, Loader2, Lock, Megaphone, MessageSquarePlus, Plus, SearchX, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import { useChatSocket } from '@/hooks/use-chat-socket';
 import { useChatShortcuts } from '@/hooks/use-chat-shortcuts';
 import { ShortcutsHelp } from '@/components/chat/shortcuts-help';
 import { useChatStore } from '@/stores/chat-store';
@@ -21,8 +20,6 @@ import { ChatEmptyState } from '@/components/chat/chat-empty-state';
 import { NewChatModal } from '@/components/chat/new-chat-modal';
 
 export function ChatApp({ conversationId }: { conversationId?: string }) {
-    useChatSocket();
-
     const router = useRouter();
     const { user } = useAuth();
     const [mounted, setMounted] = useState(false);
@@ -38,6 +35,8 @@ export function ChatApp({ conversationId }: { conversationId?: string }) {
     const activeConversation = useChatStore((s) =>
         s.activeConversationId ? s.conversations[s.activeConversationId] : undefined
     );
+    const activeLoadError = useChatStore((s) => s.activeLoadError);
+    const retryOpen = useChatStore((s) => s.retryOpen);
     const openConversation = useChatStore((s) => s.openConversation);
     const loadConversations = useChatStore((s) => s.loadConversations);
 
@@ -93,10 +92,11 @@ export function ChatApp({ conversationId }: { conversationId?: string }) {
 
     const handleGroupCreated = useCallback((c: ChatConversation) => {
         setShowCreateGroup(false);
+        // The create response is the caller's full view (with membership);
+        // the route change below opens it.
         useChatStore.getState().upsertConversation(c);
-        void openConversation(c.id);
         router.push(`/chat/${c.id}`);
-    }, [openConversation, router]);
+    }, [router]);
 
     // Step to the conversation `delta` positions away in the current list order.
     const stepConversation = useCallback((delta: number) => {
@@ -181,7 +181,9 @@ export function ChatApp({ conversationId }: { conversationId?: string }) {
 
             {/* Window pane */}
             <div className={`${hasActive ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 min-h-0 bg-gray-50 dark:bg-gray-950`}>
-                {activeConversation ? (
+                {activeLoadError ? (
+                    <ConversationUnavailable reason={activeLoadError} onRetry={() => void retryOpen()} onBack={handleBack} />
+                ) : activeConversation ? (
                     <ChatWindow
                         conversation={activeConversation}
                         onBack={handleBack}
@@ -220,6 +222,43 @@ export function ChatApp({ conversationId }: { conversationId?: string }) {
             {showBulk && <BulkMessageModal onClose={() => setShowBulk(false)} />}
             {showScheduled && <ScheduledMessagesModal onClose={() => setShowScheduled(false)} />}
             {showHelp && <ShortcutsHelp onClose={() => setShowHelp(false)} />}
+        </div>
+    );
+}
+
+/** Why the requested conversation can't be shown — never a blank page or a dead 404. */
+function ConversationUnavailable({
+    reason,
+    onRetry,
+    onBack,
+}: {
+    reason: 'not_found' | 'forbidden' | 'error';
+    onRetry: () => void;
+    onBack: () => void;
+}) {
+    const copy = {
+        not_found: { icon: SearchX, title: 'Conversation not found', body: 'It may have been deleted, or the link is wrong.' },
+        forbidden: { icon: Lock, title: 'You are not a member', body: 'You no longer have access to this conversation.' },
+        error: { icon: AlertTriangle, title: 'Could not load this conversation', body: 'Check your connection and try again.' },
+    }[reason];
+    const Icon = copy.icon;
+    return (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                <Icon className="w-7 h-7 text-gray-500" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{copy.title}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">{copy.body}</p>
+            <div className="flex gap-2 mt-2">
+                {reason === 'error' && (
+                    <button onClick={onRetry} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium">
+                        Try again
+                    </button>
+                )}
+                <button onClick={onBack} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    Back to chats
+                </button>
+            </div>
         </div>
     );
 }

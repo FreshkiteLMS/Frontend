@@ -2,63 +2,120 @@
 "use client";
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/components/layout/theme-provider';
-import { useState, useEffect } from 'react';
-import { Sun, Moon, Settings, LogOut, User as UserIcon, Bell, MessageCircle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import {
+    Sun,
+    Moon,
+    LogOut,
+    Bell,
+    MessageCircle,
+    Menu,
+    X,
+    LayoutDashboard,
+    Users,
+    Layers,
+    ClipboardCheck,
+    Trophy,
+    BookOpen,
+    CalendarDays,
+    UserRound,
+    Settings,
+    HeartHandshake,
+    ChevronDown,
+    type LucideIcon,
+} from 'lucide-react';
 import { notificationService, Notification } from '@/services/api/notification.api';
 import { NotificationSidebar } from '@/components/layout/notification-sidebar';
 import { getSocket, joinUserRoom } from '@/services/socket';
 import { useChatBadge } from '@/hooks/use-chat-socket';
 import toast from 'react-hot-toast';
 
+interface NavItem {
+    href: string;
+    label: string;
+    icon: LucideIcon;
+    /** Only highlight on this exact path (dashboards that prefix other pages). */
+    exact?: boolean;
+}
+
+const ADMIN_NAV: NavItem[] = [
+    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+    { href: '/admin/students', label: 'Students', icon: Users },
+    { href: '/admin/batches', label: 'Batches', icon: Layers },
+    { href: '/admin/enrollment-requests', label: 'Requests', icon: ClipboardCheck },
+    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+];
+
+const STUDENT_NAV: NavItem[] = [
+    { href: '/student', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+    { href: '/student/courses', label: 'Courses', icon: BookOpen },
+    { href: '/student/meetings', label: 'Meetings', icon: CalendarDays },
+    { href: '/friends', label: 'Friends', icon: HeartHandshake },
+    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+];
+
+const GUEST_NAV: NavItem[] = [{ href: '/courses', label: 'Courses', icon: BookOpen }];
+
+function isActive(pathname: string, item: NavItem): boolean {
+    if (item.exact) return pathname === item.href;
+    return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+function UnreadBadge({ count, className = '' }: { count: number; className?: string }) {
+    if (count <= 0) return null;
+    return (
+        <span className={`min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-blue-600 text-white text-[10px] font-bold leading-none ${className}`}>
+            {count > 99 ? '99+' : count}
+        </span>
+    );
+}
+
 export function Header() {
     const { user, logout } = useAuth();
+    const pathname = usePathname() || '/';
     const [mounted, setMounted] = useState(false);
+    const [mobileOpen, setMobileOpen] = useState(false);
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
+    // Navigating closes the mobile menu.
+    useEffect(() => {
+        setMobileOpen(false);
+    }, [pathname]);
+
     const displayUser = mounted ? user : null;
     const homeHref = mounted && user?.role === 'admin' ? '/admin' : '/student';
+    const nav = displayUser?.role === 'admin' ? ADMIN_NAV : displayUser?.role === 'student' ? STUDENT_NAV : GUEST_NAV;
 
     return (
-        <header className="bg-white px-4 h-16 shadow-sm border-b dark:bg-gray-900 dark:border-gray-800 transition-colors duration-200 sticky top-0 z-50">
-            <div className="max-w-[1400px] mx-auto h-full flex items-center justify-between gap-8">
-                {/* Left: Logo and Nav */}
-                <div className="flex items-center gap-8">
-                    <Link href={homeHref} className="flex flex-col group shrink-0">
-                        <span className="text-xl font-black tracking-tight text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-none">
-                            fresh<span className="text-blue-600 dark:text-blue-400">kite</span>
-                        </span>
-                        <span className="text-[9px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-semibold -mt-0.5">
-                            Earn while you learn
-                        </span>
-                    </Link>
+        // No backdrop-filter / transform here: either would make the header the
+        // containing block of fixed-position descendants (menus, overlays).
+        <header className="sticky top-0 z-50 h-16 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-colors">
+            <div className="max-w-[1400px] mx-auto h-full px-4 flex items-center gap-4">
+                <Link href={homeHref} className="flex flex-col group shrink-0 mr-2">
+                    <span className="text-xl font-black tracking-tight text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-none">
+                        fresh<span className="text-blue-600 dark:text-blue-400">kite</span>
+                    </span>
+                    <span className="text-[9px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-semibold -mt-0.5">
+                        Earn while you learn
+                    </span>
+                </Link>
 
-                    <nav className="hidden md:flex items-center gap-6">
-                        {displayUser?.role === 'admin' ? (
-                            <>
-                                <Link href="/admin/students" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Students</Link>
-                                <Link href="/admin/batches" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Batches</Link>
-                                <Link href="/admin/enrollment-requests" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Requests</Link>
-                                <Link href="/chat" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Chat</Link>
-                            </>
-                        ) : displayUser?.role === 'student' ? (
-                            <>
-                                <Link href="/student/meetings" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Meetings</Link>
-                                <Link href="/chat" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Chat</Link>
-                                <Link href="/friends" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Friends</Link>
-                            </>
-                        ) : (
-                            <Link href="/courses" className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">Categories</Link>
-                        )}
-                    </nav>
-                </div>
+                {/* Desktop navigation: icons with hover labels */}
+                <nav className="hidden md:flex items-center gap-1 flex-1 min-w-0" aria-label="Main">
+                    {nav.map((item) => (
+                        <DesktopNavLink key={item.href} item={item} active={isActive(pathname, item)} />
+                    ))}
+                </nav>
+                <div className="flex-1 md:hidden" />
 
-                {/* Right: Actions */}
-                <div className="flex items-center gap-3">
+                {/* Actions */}
+                <div className="flex items-center gap-1 sm:gap-1.5">
                     <ThemeToggle />
                     {displayUser ? (
                         <>
@@ -67,14 +124,93 @@ export function Header() {
                             <ProfileDropdown user={displayUser} logout={logout} />
                         </>
                     ) : (
-                        <div className="flex items-center gap-2">
-                            <Link href="/login" className="px-4 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 hover:text-blue-600 transition-colors">Login</Link>
-                            <Link href="/signup" className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-md transition-all">Sign Up</Link>
+                        <div className="flex items-center gap-2 ml-1">
+                            <Link href="/login" className="px-3 sm:px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-blue-600 transition-colors">Log in</Link>
+                            <Link href="/signup" className="px-3 sm:px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition-colors">Sign up</Link>
                         </div>
                     )}
+                    <button
+                        onClick={() => setMobileOpen((v) => !v)}
+                        className="md:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+                        aria-expanded={mobileOpen}
+                        aria-controls="mobile-nav"
+                    >
+                        {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                    </button>
                 </div>
             </div>
+
+            {/* Mobile navigation */}
+            {mobileOpen && (
+                <>
+                    <div className="md:hidden fixed inset-0 top-16 bg-black/30 z-40" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+                    <nav
+                        id="mobile-nav"
+                        aria-label="Main"
+                        className="md:hidden absolute inset-x-0 top-16 z-50 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg px-3 py-3 space-y-1 max-h-[calc(100vh-4rem)] overflow-y-auto"
+                    >
+                        {nav.map((item) => (
+                            <MobileNavLink key={item.href} item={item} active={isActive(pathname, item)} />
+                        ))}
+                        {displayUser && (
+                            <div className="pt-2 mt-2 border-t border-gray-100 dark:border-gray-800">
+                                <button
+                                    onClick={logout}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10"
+                                >
+                                    <LogOut className="w-5 h-5" /> Log out
+                                </button>
+                            </div>
+                        )}
+                    </nav>
+                </>
+            )}
         </header>
+    );
+}
+
+/** Icon-only nav item; its name shows as a tooltip on hover / keyboard focus. */
+function DesktopNavLink({ item, active }: { item: NavItem; active: boolean }) {
+    const Icon = item.icon;
+    return (
+        <Link
+            href={item.href}
+            aria-label={item.label}
+            aria-current={active ? 'page' : undefined}
+            className={`group relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
+                active
+                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+        >
+            <Icon className="w-5 h-5" />
+            {active && <span className="absolute -bottom-[13px] left-2 right-2 h-0.5 rounded-full bg-blue-600 dark:bg-blue-400" aria-hidden="true" />}
+            <span
+                role="tooltip"
+                className="pointer-events-none absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 dark:bg-gray-700 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 z-50"
+            >
+                {item.label}
+            </span>
+        </Link>
+    );
+}
+
+function MobileNavLink({ item, active }: { item: NavItem; active: boolean }) {
+    const Icon = item.icon;
+    return (
+        <Link
+            href={item.href}
+            aria-current={active ? 'page' : undefined}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                active
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+        >
+            <Icon className="w-5 h-5" />
+            <span className="flex-1">{item.label}</span>
+        </Link>
     );
 }
 
@@ -90,92 +226,121 @@ function ThemeToggle() {
     if (!mounted) {
         return (
             <button
-                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
                 title="Toggle theme"
+                aria-label="Toggle theme"
             >
                 <Moon className="w-5 h-5" />
             </button>
         );
     }
 
+    const dark = theme === 'dark';
     return (
         <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
-            title="Toggle theme"
+            onClick={() => setTheme(dark ? 'light' : 'dark')}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
+            title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
         >
-            {theme === 'dark' ? (
-                <Sun className="w-5 h-5" />
-            ) : (
-                <Moon className="w-5 h-5" />
-            )}
+            {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
     );
 }
 
-function ProfileDropdown({ user, logout }: { user: { name?: string; role?: string; email?: string }, logout: () => void }) {
+function ProfileDropdown({ user, logout }: { user: { id?: string; name?: string; role?: string; email?: string }, logout: () => void }) {
     const [isOpen, setIsOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
 
-    // Close dropdown when clicking outside
+    // Close on outside click / Escape
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (isOpen && !(event.target as Element).closest('.profile-dropdown')) {
-                setIsOpen(false);
-            }
+        if (!isOpen) return;
+        const onDown = (event: MouseEvent) => {
+            if (!ref.current?.contains(event.target as Node)) setIsOpen(false);
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        const onKey = (event: KeyboardEvent) => event.key === 'Escape' && setIsOpen(false);
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
     }, [isOpen]);
 
-    // Safety check for user.name
     const displayInitial = user?.name ? user.name.charAt(0).toUpperCase() : '?';
     const displayName = user?.name || 'User';
+    const roleLabel = user?.role === 'admin' ? 'Administrator' : 'Student';
 
     return (
-        <div className="relative profile-dropdown">
+        <div className="relative" ref={ref}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-semibold shadow-sm hover:shadow-md transition-all ring-2 ring-white dark:ring-gray-800"
+                className="flex items-center gap-1.5 pl-1 pr-1.5 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label="Account menu"
+                aria-haspopup="menu"
+                aria-expanded={isOpen}
             >
-                {displayInitial}
+                <span className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-sm font-semibold">
+                    {displayInitial}
+                </span>
+                <ChevronDown className={`hidden sm:block w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div role="menu" className="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1.5 z-50">
                     <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
+                            <span className="w-10 h-10 shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold">
                                 {displayInitial}
-                            </div>
-                            <div className="overflow-hidden">
-                                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate" title={displayName}>
-                                    {displayName}
-                                </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate" title={user?.email || 'User'}>
-                                    {user?.role === 'admin' ? 'Administrator' : 'Student'}
-                                </p>
+                            </span>
+                            <div className="min-w-0">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate" title={displayName}>{displayName}</p>
+                                {user?.email && <p className="text-xs text-gray-500 dark:text-gray-400 truncate" title={user.email}>{user.email}</p>}
+                                <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                                    {roleLabel}
+                                </span>
                             </div>
                         </div>
                     </div>
 
                     <div className="py-1">
-                        <button className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2 transition-colors">
-                            <Settings className="w-4 h-4" />
-                            Settings
-                        </button>
-                    </div>
-
-                    <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
-
-                    <div className="py-1">
-                        <button
-                            onClick={logout}
-                            className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2 transition-colors"
+                        {user?.id && (
+                            <Link
+                                role="menuitem"
+                                href={`/profile/${user.id}`}
+                                onClick={() => setIsOpen(false)}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2.5 transition-colors"
+                            >
+                                <UserRound className="w-4 h-4" /> My profile
+                            </Link>
+                        )}
+                        <Link
+                            role="menuitem"
+                            href="/settings"
+                            onClick={() => setIsOpen(false)}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2.5 transition-colors"
                         >
-                            <LogOut className="w-4 h-4" />
-                            Logout
-                        </button>
+                            <Settings className="w-4 h-4" /> Settings
+                        </Link>
+                        <Link
+                            role="menuitem"
+                            href="/leaderboard"
+                            onClick={() => setIsOpen(false)}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2.5 transition-colors"
+                        >
+                            <Trophy className="w-4 h-4" /> Leaderboard
+                        </Link>
                     </div>
+
+                    <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+
+                    <button
+                        role="menuitem"
+                        onClick={logout}
+                        className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2.5 transition-colors"
+                    >
+                        <LogOut className="w-4 h-4" /> Log out
+                    </button>
                 </div>
             )}
         </div>
@@ -186,19 +351,18 @@ function ChatButton() {
     // Only ever rendered inside the `displayUser` branch (mounted && authenticated),
     // so the badge cannot desync during hydration.
     const unread = useChatBadge();
+    const onChat = (usePathname() || '').startsWith('/chat');
 
     return (
         <Link
             href="/chat"
-            className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
-            aria-label="Open chat"
+            aria-current={onChat ? 'page' : undefined}
+            className={`relative p-2 rounded-lg transition-colors block ${onChat ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+            aria-label={unread > 0 ? `Messages, ${unread} unread` : 'Messages'}
+            title="Messages"
         >
             <MessageCircle className="w-5 h-5" />
-            {unread > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 text-[10px] bg-blue-600 text-white rounded-full flex items-center justify-center px-0.5 font-black">
-                    {unread > 99 ? '99+' : unread}
-                </span>
-            )}
+            <UnreadBadge count={unread} className="absolute -top-0.5 -right-0.5 ring-2 ring-white dark:ring-gray-900" />
         </Link>
     );
 }
@@ -295,8 +459,8 @@ function NotificationBell() {
         <>
             <button
                 onClick={() => setOpen(true)}
-                className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
-                aria-label="Open notifications"
+                className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
+                aria-label={unreadCount > 0 ? `Open notifications, ${unreadCount} unread` : "Open notifications"}
             >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (

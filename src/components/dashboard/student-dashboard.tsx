@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     BookOpen,
     CheckCircle,
@@ -19,6 +19,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { studentService } from '@/services/api/student.api';
 import { useAuth } from '@/hooks/use-auth';
 import { BundleCard } from './bundle-card';
+import { ACCESS_UPDATED_WINDOW_EVENT } from '@/hooks/use-chat-socket';
 
 export function StudentDashboard() {
     const { user, isLoading: authLoading } = useAuth();
@@ -31,41 +32,48 @@ export function StudentDashboard() {
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
+    const fetchDashboard = useCallback(async () => {
+        try {
+            const stats = await studentService.getDashboardStats();
+            let coursesData: any = { courses: [], displayItems: [] };
+
+            if (stats?.id) {
+                try {
+                    const responseData = await studentService.getStudentCourses(stats.id);
+                    const coursesList = Array.isArray(responseData) ? responseData : responseData.courses;
+                    const displayItems = responseData.displayItems || [];
+                    if (Array.isArray(coursesList)) {
+                        coursesData = { courses: coursesList, displayItems };
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch courses', err);
+                }
+            }
+
+            setDashboardData({ ...stats, ...coursesData });
+        } catch (error) {
+            console.error('Failed to fetch student dashboard', error);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (authLoading) return;
         if (!user?.email) {
             setLoading(false);
             return;
         }
+        void fetchDashboard();
+    }, [user?.email, authLoading, fetchDashboard]);
 
-        const fetchDashboard = async () => {
-            try {
-                const stats = await studentService.getDashboardStats();
-                let coursesData: any = { courses: [], displayItems: [] };
-
-                if (stats?.id) {
-                    try {
-                        const responseData = await studentService.getStudentCourses(stats.id);
-                        const coursesList = Array.isArray(responseData) ? responseData : responseData.courses;
-                        const displayItems = responseData.displayItems || [];
-                        if (Array.isArray(coursesList)) {
-                            coursesData = { courses: coursesList, displayItems };
-                        }
-                    } catch (err) {
-                        console.error('Failed to fetch courses', err);
-                    }
-                }
-
-                setDashboardData({ ...stats, ...coursesData });
-            } catch (error) {
-                console.error('Failed to fetch student dashboard', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchDashboard();
-    }, [user?.email, authLoading]);
+    // An admin approved a request / a purchase completed while this page was
+    // open: reload the workspace in place (no logout, no full refresh).
+    useEffect(() => {
+        const onAccess = () => void fetchDashboard();
+        window.addEventListener(ACCESS_UPDATED_WINDOW_EVENT, onAccess);
+        return () => window.removeEventListener(ACCESS_UPDATED_WINDOW_EVENT, onAccess);
+    }, [fetchDashboard]);
 
     const toggleGroup = (groupId: string) => {
         setCollapsedGroups(prev => {

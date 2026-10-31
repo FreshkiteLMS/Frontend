@@ -13,6 +13,8 @@ interface MeetingFormProps {
     onSaved: () => void;
 }
 
+const DEFAULT_ZONE = 'Asia/Kolkata';
+
 const WEEKDAYS = [
     { v: 1, l: 'Mon' }, { v: 2, l: 'Tue' }, { v: 3, l: 'Wed' },
     { v: 4, l: 'Thu' }, { v: 5, l: 'Fri' }, { v: 6, l: 'Sat' }, { v: 0, l: 'Sun' },
@@ -31,6 +33,11 @@ export function MeetingForm({ batchId, existing, onClose, onSaved }: MeetingForm
     const [frequency, setFrequency] = useState<MeetingFrequency>(existing?.frequency || 'weekly');
     const [interval, setInterval] = useState(existing?.interval || 1);
     const [byweekday, setByweekday] = useState<number[]>(existing?.byweekday || []);
+    // Times are entered in this zone. Editing keeps the meeting's own zone so it
+    // never silently shifts to the editor's browser zone.
+    const browserZone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : DEFAULT_ZONE;
+    const [timezone, setTimezone] = useState<string>(existing ? existing.timezone || DEFAULT_ZONE : browserZone || DEFAULT_ZONE);
+    const zoneOptions = Array.from(new Set([timezone, DEFAULT_ZONE, browserZone, 'UTC'].filter(Boolean)));
     const [submitting, setSubmitting] = useState(false);
 
     const toggleWeekday = (v: number) =>
@@ -53,7 +60,9 @@ export function MeetingForm({ batchId, existing, onClose, onSaved }: MeetingForm
             startTime,
             endTime,
             startDate,
-            endDate: endDate || undefined,
+            // On edit an empty value clears the end date; on create it is omitted.
+            endDate: isEdit ? endDate : endDate || undefined,
+            timezone,
         };
         if (type === 'recurring') {
             payload.frequency = frequency;
@@ -134,6 +143,13 @@ export function MeetingForm({ batchId, existing, onClose, onSaved }: MeetingForm
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">End Time</label>
                             <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className={field} />
                         </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Time zone</label>
+                        <select value={timezone} onChange={e => setTimezone(e.target.value)} className={field}>
+                            {zoneOptions.map(z => <option key={z} value={z}>{z === DEFAULT_ZONE ? 'India (Asia/Kolkata)' : z}</option>)}
+                        </select>
+                        <p className="text-xs text-gray-400 mt-1">Students see the same moment converted to their own local time.</p>
                     </div>
 
                     {/* Dates */}

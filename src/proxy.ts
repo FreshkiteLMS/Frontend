@@ -10,7 +10,8 @@ export function proxy(request: NextRequest) {
 
     // Public paths accessible without authentication
     const publicPaths = ['/', '/login', '/signup', '/team', '/success-stories'];
-    if (publicPaths.includes(pathname)) {
+    // Shared profiles (/u/:username) are viewable signed out; the API decides what's public.
+    if (publicPaths.includes(pathname) || pathname.startsWith('/u/')) {
         // If logged-in user visits login/signup, redirect to home
         if (hasToken && (pathname === '/login' || pathname === '/signup')) {
             return NextResponse.redirect(new URL('/', request.url));
@@ -18,9 +19,12 @@ export function proxy(request: NextRequest) {
         return NextResponse.next();
     }
 
-    // Protect all other routes
+    // Protect all other routes. Remember where the user was going (e.g. an
+    // invite link) so login can send them straight back.
     if (!hasToken) {
-        return NextResponse.redirect(new URL('/login', request.url));
+        const loginUrl = new URL('/login', request.url);
+        loginUrl.searchParams.set('next', pathname + request.nextUrl.search);
+        return NextResponse.redirect(loginUrl);
     }
 
     return NextResponse.next();

@@ -13,7 +13,11 @@ import type {
     CreateEventInput,
     CreateGroupInput,
     CreatePollInput,
+    InviteLink,
+    InvitePreview,
     MemberRole,
+    MessageInfo,
+    ReactionDetail,
     MessageSearchQuery,
     PresenceInfo,
     PresenceStatus,
@@ -32,7 +36,8 @@ export const chatService = {
     // ------------------------------------------------------------------
     // Conversations
     // ------------------------------------------------------------------
-    listConversations: async (opts?: { type?: string; archived?: boolean; q?: string }): Promise<ChatConversation[]> => {
+    /** archived: false → active only (default), true → archived only, 'all' → both. */
+    listConversations: async (opts?: { type?: string; archived?: boolean | 'all'; q?: string }): Promise<ChatConversation[]> => {
         const response = await api.get('/chat/conversations', { params: opts });
         return unwrap<ChatConversation[]>(response, 'Failed to load conversations');
     },
@@ -105,13 +110,32 @@ export const chatService = {
         return unwrap<unknown>(response, 'Failed to update conversation settings');
     },
 
-    rotateInviteLink: async (conversationId: string): Promise<{ invite_token: string }> => {
-        const response = await api.post(`/chat/conversations/${conversationId}/invite-link`);
-        return unwrap<{ invite_token: string }>(response, 'Failed to generate invite link');
+    /** Create a new invite link (revokes the previous one). */
+    rotateInviteLink: async (
+        conversationId: string,
+        opts?: { expires_in_hours?: number | null; max_uses?: number | null }
+    ): Promise<InviteLink & { invite_token: string }> => {
+        const response = await api.post(`/chat/conversations/${conversationId}/invite-link`, opts ?? {});
+        return unwrap<InviteLink & { invite_token: string }>(response, 'Failed to generate invite link');
+    },
+
+    getInviteLink: async (conversationId: string): Promise<InviteLink | null> => {
+        const response = await api.get(`/chat/conversations/${conversationId}/invite-link`);
+        return unwrap<InviteLink | null>(response, 'Failed to load invite link');
+    },
+
+    revokeInviteLink: async (conversationId: string): Promise<void> => {
+        const response = await api.delete(`/chat/conversations/${conversationId}/invite-link`);
+        unwrap<unknown>(response, 'Failed to revoke invite link');
+    },
+
+    previewInvite: async (inviteToken: string): Promise<InvitePreview> => {
+        const response = await api.get(`/chat/invites/${encodeURIComponent(inviteToken)}`);
+        return unwrap<InvitePreview>(response, 'Failed to load invite');
     },
 
     joinByInvite: async (inviteToken: string): Promise<ChatConversation> => {
-        const response = await api.post(`/chat/join/${inviteToken}`);
+        const response = await api.post(`/chat/join/${encodeURIComponent(inviteToken)}`);
         return unwrap<ChatConversation>(response, 'Failed to join via invite');
     },
 
@@ -138,9 +162,10 @@ export const chatService = {
     // ------------------------------------------------------------------
     // Messages
     // ------------------------------------------------------------------
+    /** Oldest → newest. `before` pages back; `after` fetches newer messages (resync). */
     listMessages: async (
         conversationId: string,
-        opts?: { before?: string; limit?: number; thread_root_id?: string }
+        opts?: { before?: string; after?: string; limit?: number; thread_root_id?: string }
     ): Promise<{ messages: ChatMessage[]; has_more: boolean }> => {
         const response = await api.get(`/chat/conversations/${conversationId}/messages`, { params: opts });
         return unwrap<{ messages: ChatMessage[]; has_more: boolean }>(response, 'Failed to load messages');
@@ -169,6 +194,18 @@ export const chatService = {
     unreact: async (messageId: string, emoji: string): Promise<unknown> => {
         const response = await api.delete(`/chat/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`);
         return unwrap<unknown>(response, 'Failed to remove reaction');
+    },
+
+    /** Who reacted with each emoji. */
+    listReactions: async (messageId: string): Promise<ReactionDetail[]> => {
+        const response = await api.get(`/chat/messages/${messageId}/reactions`);
+        return unwrap<ReactionDetail[]>(response, 'Failed to load reactions');
+    },
+
+    /** Delivery / read details for a message you sent. */
+    messageInfo: async (messageId: string): Promise<MessageInfo> => {
+        const response = await api.get(`/chat/messages/${messageId}/info`);
+        return unwrap<MessageInfo>(response, 'Failed to load message info');
     },
 
     pinMessage: async (messageId: string): Promise<unknown> => {

@@ -32,7 +32,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useChatStore } from '@/stores/chat-store';
 import { chatService } from '@/services/api/chat.api';
 import { getChatNsp } from '@/services/chat-socket';
-import { EMOJI_CATEGORIES, formatDuration, formatFileSize, messagePreviewText } from '@/lib/chat-utils';
+import { formatDuration, formatFileSize, messagePreviewText } from '@/lib/chat-utils';
+import { EmojiPopover } from '@/components/chat/emoji-popover';
 import {
     CHAT_EVENTS,
     MAX_ATTACHMENTS,
@@ -61,7 +62,6 @@ interface MentionRef {
     name: string;
 }
 
-const RECENT_EMOJI_KEY = 'chat_recent_emojis';
 const MAX_TEXTAREA_HEIGHT = 192; // ~8 rows
 const TYPING_THROTTLE_MS = 2000;
 const TYPING_IDLE_MS = 3000;
@@ -69,17 +69,6 @@ const TYPING_IDLE_MS = 3000;
 function newId(): string {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function loadRecentEmojis(): string[] {
-    if (typeof window === 'undefined') return [];
-    try {
-        const raw = localStorage.getItem(RECENT_EMOJI_KEY);
-        const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-        return Array.isArray(parsed) ? parsed.filter((e): e is string => typeof e === 'string').slice(0, 24) : [];
-    } catch {
-        return [];
-    }
 }
 
 /**
@@ -103,11 +92,8 @@ export function MessageInput({ conversation }: MessageInputProps) {
     const [uploading, setUploading] = useState(false);
     const [dragActive, setDragActive] = useState(false);
 
-    // Emoji picker
+    // Emoji picker (recently used emojis are remembered by the picker itself)
     const [showEmoji, setShowEmoji] = useState(false);
-    const [emojiSearch, setEmojiSearch] = useState('');
-    const [activeCategory, setActiveCategory] = useState(EMOJI_CATEGORIES[0]?.name ?? '');
-    const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
 
     // Mentions
     const [members, setMembers] = useState<ConversationMemberView[]>([]);
@@ -134,7 +120,7 @@ export function MessageInput({ conversation }: MessageInputProps) {
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const emojiRef = useRef<HTMLDivElement>(null);
+    const emojiButtonRef = useRef<HTMLButtonElement>(null);
     const optionsRef = useRef<HTMLDivElement>(null);
     const typingLastRef = useRef(0);
     const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -166,7 +152,6 @@ export function MessageInput({ conversation }: MessageInputProps) {
 
     useEffect(() => {
         setMounted(true);
-        setRecentEmojis(loadRecentEmojis());
     }, []);
 
     // Load members for mentions (groups only).
@@ -253,17 +238,16 @@ export function MessageInput({ conversation }: MessageInputProps) {
         setEditingMessage(null);
     }, [conversation.id, setReplyTarget, setEditingMessage]);
 
-    // Close emoji / options popovers on outside click.
+    // Close the options popover on outside click (the emoji popover handles its own).
     useEffect(() => {
-        if (!showEmoji && !optionsOpen) return;
+        if (!optionsOpen) return;
         const handler = (event: MouseEvent) => {
             const t = event.target as Node;
-            if (showEmoji && emojiRef.current && !emojiRef.current.contains(t)) setShowEmoji(false);
-            if (optionsOpen && optionsRef.current && !optionsRef.current.contains(t)) setOptionsOpen(false);
+            if (optionsRef.current && !optionsRef.current.contains(t)) setOptionsOpen(false);
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
-    }, [showEmoji, optionsOpen]);
+    }, [optionsOpen]);
 
     // ------------------------------------------------------------------
     // Textarea autosize
@@ -413,32 +397,7 @@ export function MessageInput({ conversation }: MessageInputProps) {
         });
     };
 
-    const pickEmoji = (emoji: string) => {
-        insertAtCursor(emoji);
-        setRecentEmojis((prev) => {
-            const next = [emoji, ...prev.filter((e) => e !== emoji)].slice(0, 24);
-            try {
-                localStorage.setItem(RECENT_EMOJI_KEY, JSON.stringify(next));
-            } catch {
-                /* ignore */
-            }
-            return next;
-        });
-    };
-
-    const emojiGrid = useMemo(() => {
-        const q = emojiSearch.trim().toLowerCase();
-        if (q) {
-            // The curated set carries no per-emoji keywords, so search matches
-            // category names ("food", "travel"…) and, for pasted emoji, the
-            // glyph itself.
-            const byCategory = EMOJI_CATEGORIES.filter((c) => c.name.toLowerCase().includes(q)).flatMap((c) => c.emojis);
-            const byGlyph = EMOJI_CATEGORIES.flatMap((c) => c.emojis).filter((e) => e.includes(emojiSearch.trim()));
-            return Array.from(new Set([...byGlyph, ...byCategory]));
-        }
-        if (activeCategory === 'Recent') return recentEmojis;
-        return EMOJI_CATEGORIES.find((c) => c.name === activeCategory)?.emojis ?? [];
-    }, [emojiSearch, activeCategory, recentEmojis]);
+    const pickEmoji = (emoji: string) => insertAtCursor(emoji);
 
     // ------------------------------------------------------------------
     // Attachments
@@ -829,65 +788,19 @@ export function MessageInput({ conversation }: MessageInputProps) {
                     </button>
 
                     {/* Emoji */}
-                    <div className="relative shrink-0" ref={emojiRef}>
+                    <div className="relative shrink-0">
                         <button
+                            ref={emojiButtonRef}
+                            type="button"
                             onClick={() => setShowEmoji((v) => !v)}
-                            className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 ${showEmoji ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}
                             aria-label="Emoji"
+                            aria-expanded={showEmoji}
                         >
                             <Smile className="w-5 h-5" />
                         </button>
                         {showEmoji && (
-                            <div className="absolute bottom-12 left-0 w-72 h-80 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                                <div className="p-2 border-b border-gray-100 dark:border-gray-700">
-                                    <input
-                                        value={emojiSearch}
-                                        onChange={(e) => setEmojiSearch(e.target.value)}
-                                        placeholder="Search emoji…"
-                                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                </div>
-                                <div className="flex flex-1 min-h-0">
-                                    {!emojiSearch && (
-                                        <div className="w-12 shrink-0 overflow-y-auto border-r border-gray-100 dark:border-gray-700 py-1">
-                                            {recentEmojis.length > 0 && (
-                                                <button
-                                                    onClick={() => setActiveCategory('Recent')}
-                                                    className={`w-full py-1.5 text-lg ${activeCategory === 'Recent' ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
-                                                    title="Recent"
-                                                >
-                                                    🕘
-                                                </button>
-                                            )}
-                                            {EMOJI_CATEGORIES.map((c) => (
-                                                <button
-                                                    key={c.name}
-                                                    onClick={() => setActiveCategory(c.name)}
-                                                    className={`w-full py-1.5 text-lg ${activeCategory === c.name ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
-                                                    title={c.name}
-                                                >
-                                                    {c.emojis[0]}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <div className="flex-1 overflow-y-auto p-2 grid grid-cols-7 gap-0.5 content-start">
-                                        {emojiGrid.length === 0 ? (
-                                            <p className="col-span-7 text-center text-xs text-gray-400 py-6">No emoji</p>
-                                        ) : (
-                                            emojiGrid.map((emoji, i) => (
-                                                <button
-                                                    key={`${emoji}-${i}`}
-                                                    onClick={() => pickEmoji(emoji)}
-                                                    className="w-8 h-8 flex items-center justify-center text-lg rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                                                >
-                                                    {emoji}
-                                                </button>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
+                            <EmojiPopover anchorRef={emojiButtonRef} onPick={pickEmoji} onClose={() => setShowEmoji(false)} />
                         )}
                     </div>
 

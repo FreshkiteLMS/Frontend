@@ -7,11 +7,9 @@ import {
     Ban,
     Camera,
     Check,
-    Copy,
     GraduationCap,
     HelpCircle,
     Image as ImageIcon,
-    Link2,
     Loader2,
     Lock,
     LogOut,
@@ -21,7 +19,6 @@ import {
     Pencil,
     Pin,
     Radio,
-    RefreshCw,
     Search,
     Settings as SettingsIcon,
     ShieldCheck,
@@ -35,6 +32,7 @@ import {
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { chatService } from '@/services/api/chat.api';
+import { InviteLinkManager } from '@/components/chat/invite-link-manager';
 import { chatSocialService } from '@/services/api/chat-social.api';
 import { useChatStore } from '@/stores/chat-store';
 import { usePresenceStore } from '@/stores/presence-store';
@@ -109,8 +107,6 @@ export function GroupInfoPanel({ conversation, onClose }: GroupInfoPanelProps) {
     const [addSearching, setAddSearching] = useState(false);
     const [addSaving, setAddSaving] = useState(false);
 
-    const [inviteToken, setInviteToken] = useState<string>(conversation.invite_token || '');
-    const [rotatingInvite, setRotatingInvite] = useState(false);
     const [busyFlag, setBusyFlag] = useState<string | null>(null);
     const [lightbox, setLightbox] = useState<ChatAttachment | null>(null);
 
@@ -288,31 +284,6 @@ export function GroupInfoPanel({ conversation, onClose }: GroupInfoPanelProps) {
             toast.error(err?.response?.data?.message || err.message || 'Failed to update setting');
         } finally {
             setBusyFlag(null);
-        }
-    };
-
-    const rotateInvite = async () => {
-        setRotatingInvite(true);
-        try {
-            const { invite_token } = await chatService.rotateInviteLink(conversation.id);
-            setInviteToken(invite_token);
-            upsertConversation({ ...conversation, invite_token });
-            toast.success('Invite link ready');
-        } catch (err: any) {
-            toast.error(err?.response?.data?.message || err.message || 'Failed to generate invite link');
-        } finally {
-            setRotatingInvite(false);
-        }
-    };
-
-    const copyInvite = async () => {
-        if (!inviteToken) return;
-        const link = `${window.location.origin}/chat/join/${inviteToken}`;
-        try {
-            await navigator.clipboard.writeText(link);
-            toast.success('Invite link copied');
-        } catch {
-            toast.error('Could not copy link');
         }
     };
 
@@ -908,46 +879,13 @@ export function GroupInfoPanel({ conversation, onClose }: GroupInfoPanelProps) {
                                 ))}
                             </div>
 
-                            {/* Invite link */}
-                            {isModerator && conversation.type !== 'direct' && (
+                            {/* Invite link (groups only) */}
+                            {isModerator && conversation.type === 'group' && (
                                 <div>
                                     <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                                         Invite link
                                     </p>
-                                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2">
-                                        {inviteToken ? (
-                                            <div className="flex items-center gap-2">
-                                                <code className="flex-1 min-w-0 truncate text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 rounded px-2 py-1.5">
-                                                    {inviteToken}
-                                                </code>
-                                                <button
-                                                    onClick={copyInvite}
-                                                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
-                                                    aria-label="Copy invite link"
-                                                >
-                                                    <Copy className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                No invite link yet. Generate one to let people join.
-                                            </p>
-                                        )}
-                                        <button
-                                            onClick={rotateInvite}
-                                            disabled={rotatingInvite}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-sm font-semibold transition-colors disabled:opacity-60"
-                                        >
-                                            {rotatingInvite ? (
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                            ) : inviteToken ? (
-                                                <RefreshCw className="w-4 h-4" />
-                                            ) : (
-                                                <Link2 className="w-4 h-4" />
-                                            )}
-                                            {inviteToken ? 'Rotate link' : 'Generate link'}
-                                        </button>
-                                    </div>
+                                    <InviteLinkManager conversationId={conversation.id} />
                                 </div>
                             )}
 

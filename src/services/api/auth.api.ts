@@ -113,6 +113,18 @@ export const authService = {
 
     logout: () => {
         if (typeof window !== 'undefined') {
+            // End this device's server session. keepalive lets the request
+            // finish even though the page navigates away immediately.
+            const refreshToken = localStorage.getItem('refreshToken');
+            const token = localStorage.getItem('token');
+            if (refreshToken || token) {
+                fetch(`${env.API_URL}/auth/logout`, {
+                    method: 'POST',
+                    keepalive: true,
+                    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                    body: JSON.stringify({ refreshToken }),
+                }).catch(() => undefined);
+            }
             localStorage.removeItem('token');
             localStorage.removeItem('refreshToken');
             localStorage.removeItem('user');

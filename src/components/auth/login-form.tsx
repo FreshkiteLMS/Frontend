@@ -5,6 +5,7 @@ import { Lock, User, AlertCircle, Eye, EyeOff, ArrowRight, CheckCircle2 } from '
 import { useAuth } from '@/hooks/use-auth';
 import Link from 'next/link';
 import { GoogleLogin } from '@react-oauth/google';
+import { nextParamFromLocation } from '@/lib/safe-redirect';
 
 const perks = [
     'Access 7+ structured learning tracks',
@@ -31,7 +32,10 @@ export function LoginForm() {
                 setError(result.error || 'Login failed');
                 setLoading(false);
             } else {
-                if (result.user?.role === 'admin') {
+                const next = nextParamFromLocation();
+                if (next) {
+                    window.location.href = next;
+                } else if (result.user?.role === 'admin') {
                     window.location.href = '/admin';
                 } else {
                     const redirectPath = result.user?.hasPurchasedCourses ? '/student' : '/student/courses';
@@ -53,7 +57,10 @@ export function LoginForm() {
                 setError(result.error || 'Google Login failed');
                 setLoading(false);
             } else {
-                if (result.user?.role === 'admin') {
+                const next = nextParamFromLocation();
+                if (next) {
+                    window.location.href = next;
+                } else if (result.user?.role === 'admin') {
                     window.location.href = '/admin';
                 } else {
                     const redirectPath = result.user?.hasPurchasedCourses ? '/student' : '/student/courses';

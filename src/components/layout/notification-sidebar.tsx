@@ -2,6 +2,8 @@
 
 import { X, UserPlus, ShoppingCart, Bell, Trash2, CheckCheck, Check, Video, Layers, BookOpen, AlarmClock, Ban, ShieldCheck } from 'lucide-react';
 import { Notification } from '@/services/api/notification.api';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface NotificationSidebarProps {
     open: boolean;
@@ -78,7 +80,20 @@ export function NotificationSidebar({
     onDelete,
     onClearAll,
 }: NotificationSidebarProps) {
-    return (
+    // Rendered into <body>: an ancestor with a transform / filter (e.g. the
+    // sticky header) would otherwise become the containing block of these
+    // fixed elements and squeeze the panel into the header.
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => setMounted(true), []);
+    useEffect(() => {
+        if (!open) return;
+        const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [open, onClose]);
+    if (!mounted) return null;
+
+    return createPortal(
         <>
             {/* Backdrop */}
             <div
@@ -206,6 +221,7 @@ export function NotificationSidebar({
                     )}
                 </div>
             </aside>
-        </>
+        </>,
+        document.body,
     );
 }

@@ -5,8 +5,8 @@ import type {
     ChatUserSummary,
     FriendRequestView,
     FriendSuggestion,
+    DiscoverStudent,
     FriendView,
-    LeaderboardEntry,
     UpdateChatProfileInput,
 } from '@/types/chat';
 
@@ -95,11 +95,23 @@ export const chatSocialService = {
     },
 
     // ------------------------------------------------------------------
-    // Leaderboard
+    // Student directory (Friends → Discover)
     // ------------------------------------------------------------------
-    leaderboard: async (period: 'weekly' | 'monthly'): Promise<LeaderboardEntry[]> => {
-        const response = await api.get('/chat/leaderboard', { params: { period } });
-        return unwrap<LeaderboardEntry[]>(response, 'Failed to load leaderboard');
+    discoverStudents: async (opts: {
+        q?: string;
+        page?: number;
+        limit?: number;
+        relation?: 'all' | 'none' | 'friends' | 'pending';
+    }): Promise<{ data: DiscoverStudent[]; total: number; totalPages: number; page: number }> => {
+        const response = await api.get('/chat/friends/discover', { params: opts });
+        if (!response.data.success) throw new Error(response.data.message || 'Failed to load students');
+        const meta = response.data.meta || {};
+        return {
+            data: response.data.data || [],
+            total: meta.total ?? 0,
+            totalPages: meta.totalPages ?? 1,
+            page: meta.page ?? opts.page ?? 1,
+        };
     },
 
     // ------------------------------------------------------------------

@@ -320,4 +320,13 @@ body {
 .code-highlight .hljs-name { color: #94e2d5; }
 .code-highlight .hljs-deletion { color: #f38ba8; }
 .code-highlight .hljs-emphasis { font-style: italic; }
-.code-highlight .hljs-strong { font-weight: 600; }
+.code-highlight .hljs-strong { font-weight: 600; }
+/* Settings → Preferences → Reduce motion */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}

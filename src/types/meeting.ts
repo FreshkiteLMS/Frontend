@@ -12,6 +12,8 @@ export interface Meeting {
     type: MeetingType;
     start_time: string;
     end_time: string;
+    /** IANA zone the times are expressed in (null on legacy meetings = Asia/Kolkata). */
+    timezone?: string | null;
     start_date: string;
     end_date?: string | null;
     recurrence_rule?: string | null;
@@ -35,8 +37,10 @@ export interface MeetingOccurrence {
     type: MeetingType;
     recurrenceRule?: string | null;
     status: MeetingStatus;
-    start: string;       // ISO
-    end: string;         // ISO
+    start: string;       // ISO instant (UTC)
+    end: string;         // ISO instant (UTC)
+    /** Zone the organiser scheduled in. */
+    timezone?: string;
     isRecurring: boolean;
 }
 
@@ -55,7 +59,10 @@ export interface MeetingInput {
     startTime: string;   // HH:mm
     endTime: string;     // HH:mm
     startDate: string;   // YYYY-MM-DD
+    /** Inclusive; '' clears it on update. */
     endDate?: string;
+    /** IANA zone the date/times are in; omitted on update keeps the stored zone. */
+    timezone?: string;
     frequency?: MeetingFrequency;
     interval?: number;
     byweekday?: number[];

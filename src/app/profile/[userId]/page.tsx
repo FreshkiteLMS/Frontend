@@ -2,17 +2,20 @@
 
 import { useParams } from 'next/navigation';
 import { Header } from '@/components/layout/header';
-import { ProfileView } from '@/components/chat/profile-view';
+import { ProfilePage } from '@/components/profile/profile-page';
 
-export default function ChatProfilePage() {
+/** /profile/:idOrUsername — profiles inside the signed-in app. */
+export default function ProfileRoute() {
     const params = useParams<{ userId: string }>();
     const raw = params?.userId;
-    const userId = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] : '';
+    const key = typeof raw === 'string' ? decodeURIComponent(raw) : Array.isArray(raw) ? raw[0] : '';
 
     return (
         <>
             <Header />
-            <ProfileView userId={userId} />
+            <main className="min-h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-950">
+                <ProfilePage idOrUsername={key} />
+            </main>
         </>
     );
 }

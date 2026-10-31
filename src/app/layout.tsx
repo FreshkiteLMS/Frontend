@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/auth/auth-context";
+import { RealtimeProvider } from "@/components/layout/realtime-provider";
+import { PreferencesSync } from "@/components/layout/preferences-sync";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { Toaster } from 'react-hot-toast';
@@ -32,6 +34,9 @@ export default function RootLayout({
     (function() {
       try {
         var theme = localStorage.getItem('theme');
+        if (theme === 'system') {
+          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
         if (theme === 'light' || theme === 'dark') {
           document.documentElement.classList.add(theme);
         } else {
@@ -54,7 +59,8 @@ export default function RootLayout({
         <ThemeProvider defaultTheme="dark">
           <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''}>
             <AuthProvider>
-              {children}
+              <PreferencesSync />
+              <RealtimeProvider>{children}</RealtimeProvider>
               <Toaster
                 position="top-right"
                 toastOptions={{

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { chatService } from '@/services/api/chat.api';
+import { refreshCourseAccess } from '@/hooks/use-course-access';
 import {
     disconnectChatSockets,
     getChatNsp,
@@ -15,6 +15,7 @@ import { useFriendStore } from '@/stores/friend-store';
 import { useNotificationCenterStore } from '@/stores/notification-center-store';
 import { usePresenceStore } from '@/stores/presence-store';
 import {
+    ACCESS_UPDATED_EVENT,
     CHAT_EVENTS,
     type BadgeUpdatePayload,
     type ChatConversation,
@@ -23,6 +24,7 @@ import {
     type FriendAcceptedPayload,
     type FriendRequestPayload,
     type MessageDeletedPayload,
+    type MessageDeliveredPayload,
     type MessagePinnedPayload,
     type MessageReactionPayload,
     type MessageReadPayload,
@@ -37,30 +39,42 @@ import type { Notification } from '@/services/api/notification.api';
 const TYPING_TTL_MS = 6000;
 const TYPING_SWEEP_MS = 3000;
 
+/** Window event fired when the user's course access changes (approval, purchase…). */
+export const ACCESS_UPDATED_WINDOW_EVENT = 'lms:access-updated';
+
+/** Notification types that mean "your course access just changed". */
+const ACCESS_NOTIFICATION_TYPES = new Set(['request_approved', 'COURSE_ASSIGNED', 'BATCH_ADDED', 'BATCH_REMOVED']);
+
 interface JoinAck {
     ok: boolean;
     error?: string;
 }
 
+/** The user is actually looking at this tab. */
+function isViewing(): boolean {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible' && document.hasFocus();
+}
+
 /**
- * Wires the three chat namespaces ('/chat', '/presence', '/notification') to the
- * chat/presence/friend/notification stores. Mount ONCE (ChatApp does).
+ * Wires the three realtime namespaces ('/chat', '/presence', '/notification')
+ * to the chat/presence/friend/notification stores. Mounted ONCE for the whole
+ * app (RealtimeProvider), so unread badges, access changes and incoming
+ * messages stay live on every page — not only on /chat.
  *
  * Listener registration is idempotent across React StrictMode's double-invoke:
- * every `.on` is paired with an exact-handler `.off` in the cleanup, so a
- * remount never leaves duplicates behind.
+ * every `.on` is paired with an exact-handler `.off` in the cleanup.
  */
 export function useChatSocket(): void {
     const { user } = useAuth();
     const userId = user?.id;
 
-    // ------------------------------------------------------------------
-    // Event wiring — one effect per authenticated user.
-    // ------------------------------------------------------------------
     useEffect(() => {
         if (!userId) {
-            // Logged out: tear down sockets and drop any cached social state.
+            // Logged out: tear down sockets and drop every cached copy of
+            // the previous user's data.
             disconnectChatSockets();
+            useChatStore.getState().reset();
             usePresenceStore.getState().reset();
             useFriendStore.getState().reset();
             return;
@@ -69,56 +83,45 @@ export function useChatSocket(): void {
         const chat = getChatNsp();
         const presence = getPresenceNsp();
         const notification = getNotificationNsp();
+        let connectedBefore = chat.connected;
+
+        /** Mark the open conversation read when the user can actually see it. */
+        const readActiveIfViewing = (upToMessageId?: string) => {
+            const store = useChatStore.getState();
+            const activeId = store.activeConversationId;
+            if (!activeId || !isViewing()) return;
+            const conv = store.conversations[activeId];
+            if (!upToMessageId && !conv?.membership?.unread_count) return;
+            chat.emit(CHAT_EVENTS.MESSAGE_READ, { conversationId: activeId, upToMessageId });
+            store.markConversationRead(activeId);
+        };
 
         /* ---------------------------- /chat ---------------------------- */
 
         const onMessageReceived = (message: ChatMessage) => {
+            if (!message?.id) return;
             const store = useChatStore.getState();
             store.applyIncomingMessage(message);
+            if (message.sender_id === userId || message.type === 'system') return;
 
-            // Read receipt: the conversation is open and the tab is focused.
-            const isActive = store.activeConversationId === message.conversation_id;
-            const isOwn = message.sender_id === userId;
-            const focused = typeof document === 'undefined' || document.hasFocus();
-            if (isActive && !isOwn && focused) {
-                chat.emit(CHAT_EVENTS.MESSAGE_READ, {
-                    conversationId: message.conversation_id,
-                    upToMessageId: message.id,
-                });
+            // This device has the message → delivery receipt.
+            chat.emit(CHAT_EVENTS.MESSAGE_DELIVERED, { conversationId: message.conversation_id, messageIds: [message.id] });
+            // Read receipt only when the chat is open AND visible.
+            if (store.activeConversationId === message.conversation_id && !message.thread_root_id) {
+                readActiveIfViewing(message.id);
             }
         };
 
-        const onMessageEdited = (message: ChatMessage) => {
-            useChatStore.getState().applyEdit(message);
-        };
-
-        const onMessageDeleted = (payload: MessageDeletedPayload) => {
-            useChatStore.getState().applyDelete(payload);
-        };
-
-        const onMessageReaction = (payload: MessageReactionPayload) => {
-            useChatStore.getState().applyReaction(payload);
-        };
-
-        const onMessagePinned = (payload: MessagePinnedPayload) => {
-            useChatStore.getState().applyPinned(payload);
-        };
-
-        const onMessageRead = (payload: MessageReadPayload) => {
-            useChatStore.getState().applyRead(payload);
-        };
-
-        const onMessageDelivered = () => {
-            // Delivery ticks are derived from the message docs themselves; the
-            // event only matters for direct chats, where the next message patch
-            // carries `delivered_to`. Nothing to reconcile locally.
-        };
+        const onMessageEdited = (message: ChatMessage) => useChatStore.getState().applyEdit(message);
+        const onMessageDeleted = (payload: MessageDeletedPayload) => useChatStore.getState().applyDelete(payload);
+        const onMessageReaction = (payload: MessageReactionPayload) => useChatStore.getState().applyReaction(payload);
+        const onMessagePinned = (payload: MessagePinnedPayload) => useChatStore.getState().applyPinned(payload);
+        const onMessageRead = (payload: MessageReadPayload) => useChatStore.getState().applyRead(payload);
+        const onMessageDelivered = (payload: MessageDeliveredPayload) => useChatStore.getState().applyDelivered(payload);
 
         const onTyping = (payload: TypingPayload) => {
             if (!payload?.conversationId || payload.userId === userId) return;
-            useChatStore
-                .getState()
-                .setTyping(payload.conversationId, payload.userId, payload.name || 'Someone');
+            useChatStore.getState().setTyping(payload.conversationId, payload.userId, payload.name || 'Someone');
         };
 
         const onStopTyping = (payload: TypingPayload) => {
@@ -128,38 +131,38 @@ export function useChatSocket(): void {
 
         const onConversationCreated = (payload: { conversation: ChatConversation } | ChatConversation) => {
             const conversation = 'conversation' in payload ? payload.conversation : payload;
+            // upsertConversation fetches our membership view when the
+            // broadcast document doesn't carry one.
             if (conversation?.id) useChatStore.getState().upsertConversation(conversation);
         };
 
         const onConversationUpdated = (payload: {
             conversation_id: string;
             conversation?: Partial<ChatConversation>;
-        }) => {
-            if (payload?.conversation_id) useChatStore.getState().applyConversationUpdated(payload);
+            removed?: boolean;
+        } & Partial<ChatConversation>) => {
+            if (!payload?.conversation_id && !payload?.id) return;
+            const id = payload.conversation_id || (payload.id as string);
+            // Older broadcasts send the whole conversation document instead of a patch.
+            const patch = payload.conversation ?? (payload.id ? (payload as Partial<ChatConversation>) : undefined);
+            useChatStore.getState().applyConversationUpdated({ conversation_id: id, conversation: patch, removed: payload.removed });
         };
 
         const onMemberChanged = (payload: { conversation_id: string }) => {
-            // Membership changed — refresh the conversation so member_count and
-            // settings stay accurate for whoever has it open.
             if (!payload?.conversation_id) return;
-            chatService
-                .getConversation(payload.conversation_id)
-                .then((conv) => useChatStore.getState().upsertConversation(conv))
-                .catch(() => undefined);
+            useChatStore.getState().refreshConversation(payload.conversation_id).catch(() => undefined);
         };
 
         const onBadgeUpdate = (payload: BadgeUpdatePayload) => {
             const convId = payload?.conversation_id;
             if (!convId) return;
             const store = useChatStore.getState();
-            // The active conversation is already read; ignore its badge pings.
+            if (typeof payload.unread_count === 'number') {
+                store.setUnread(convId, payload.unread_count);
+                return;
+            }
             if (store.activeConversationId === convId) return;
-            // Refetch for an authoritative unread_count + last_message preview,
-            // falling back to a local increment if the request fails.
-            chatService
-                .getConversation(convId)
-                .then((conv) => useChatStore.getState().upsertConversation(conv))
-                .catch(() => useChatStore.getState().incrementUnread(convId));
+            store.refreshConversation(convId).catch(() => store.incrementUnread(convId));
         };
 
         const onPollUpdated = (payload: PollUpdatedPayload) => {
@@ -173,9 +176,12 @@ export function useChatSocket(): void {
         };
 
         const onChatConnect = () => {
-            // Re-join the open conversation room after a reconnect.
-            const activeId = useChatStore.getState().activeConversationId;
+            const store = useChatStore.getState();
+            const activeId = store.activeConversationId;
             if (activeId) chat.emit(CHAT_EVENTS.JOIN_ROOM, { conversationId: activeId });
+            // After an interruption, fetch whatever was missed while offline.
+            if (connectedBefore) void store.resyncAll();
+            connectedBefore = true;
         };
 
         chat.on('connect', onChatConnect);
@@ -199,19 +205,12 @@ export function useChatSocket(): void {
 
         /* -------------------------- /presence -------------------------- */
 
-        const onPresenceState = (payload: PresenceInfo | PresenceInfo[]) => {
-            usePresenceStore.getState().applyPresence(payload);
-        };
-
+        const onPresenceState = (payload: PresenceInfo | PresenceInfo[]) => usePresenceStore.getState().applyPresence(payload);
         const onUserPresence = (payload: UserPresencePayload) => {
             if (!payload?.userId) return;
             usePresenceStore.getState().applyPresence(payload);
         };
-
-        const onPresenceConnect = () => {
-            // Re-establish watch rooms after a reconnect.
-            usePresenceStore.getState().resubscribeAll();
-        };
+        const onPresenceConnect = () => usePresenceStore.getState().resubscribeAll();
 
         presence.on('connect', onPresenceConnect);
         presence.on(CHAT_EVENTS.PRESENCE_STATE, onPresenceState);
@@ -220,9 +219,16 @@ export function useChatSocket(): void {
 
         /* ------------------------ /notification ------------------------ */
 
+        const onAccessUpdated = () => {
+            // Course access is re-derived on the server; refetch every cached copy.
+            refreshCourseAccess().catch(() => undefined);
+            if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(ACCESS_UPDATED_WINDOW_EVENT));
+        };
+
         const onNotification = (payload: Notification) => {
             if (!payload) return;
             useNotificationCenterStore.getState().applyIncoming(payload);
+            if (ACCESS_NOTIFICATION_TYPES.has(String((payload as { type?: string }).type))) onAccessUpdated();
         };
 
         const onFriendRequest = (payload: FriendRequestPayload) => {
@@ -240,6 +246,13 @@ export function useChatSocket(): void {
         notification.on(CHAT_EVENTS.NOTIFICATION, onNotification);
         notification.on(CHAT_EVENTS.FRIEND_REQUEST, onFriendRequest);
         notification.on(CHAT_EVENTS.FRIEND_ACCEPTED, onFriendAccepted);
+        notification.on(ACCESS_UPDATED_EVENT, onAccessUpdated);
+
+        /* --------------- focus: read what arrived while away --------------- */
+
+        const onVisible = () => readActiveIfViewing();
+        window.addEventListener('focus', onVisible);
+        document.addEventListener('visibilitychange', onVisible);
 
         /* ---------------------- typing TTL sweeper ---------------------- */
 
@@ -255,6 +268,8 @@ export function useChatSocket(): void {
 
         return () => {
             window.clearInterval(sweeper);
+            window.removeEventListener('focus', onVisible);
+            document.removeEventListener('visibilitychange', onVisible);
 
             chat.off('connect', onChatConnect);
             chat.off(CHAT_EVENTS.MESSAGE_RECEIVED, onMessageReceived);
@@ -283,35 +298,34 @@ export function useChatSocket(): void {
             notification.off(CHAT_EVENTS.NOTIFICATION, onNotification);
             notification.off(CHAT_EVENTS.FRIEND_REQUEST, onFriendRequest);
             notification.off(CHAT_EVENTS.FRIEND_ACCEPTED, onFriendAccepted);
+            notification.off(ACCESS_UPDATED_EVENT, onAccessUpdated);
         };
     }, [userId]);
 
     // ------------------------------------------------------------------
-    // Room membership follows the active conversation.
+    // The server subscribes every chat socket to all of the user's rooms on
+    // connect. Joining the open conversation again is a cheap, idempotent
+    // safety net (e.g. a room added while this socket was reconnecting).
+    // Rooms are deliberately NOT left when switching chats — that is what
+    // used to stop background conversations from receiving messages.
     // ------------------------------------------------------------------
     const activeConversationId = useChatStore((s) => s.activeConversationId);
 
     useEffect(() => {
         if (!userId || !activeConversationId) return;
-        const chat = getChatNsp();
-        const conversationId = activeConversationId;
-
-        chat.emit(CHAT_EVENTS.JOIN_ROOM, { conversationId }, (ack?: JoinAck) => {
-            if (ack && ack.ok === false) {
-                toast.error(ack.error || 'Could not join this conversation');
+        getChatNsp().emit(CHAT_EVENTS.JOIN_ROOM, { conversationId: activeConversationId }, (ack?: JoinAck) => {
+            if (ack && ack.ok === false && useChatStore.getState().activeConversationId === activeConversationId) {
+                // The conversation view shows the reason; no duplicate toast.
+                console.warn('[chat] join room refused:', ack.error);
             }
         });
-
-        return () => {
-            chat.emit(CHAT_EVENTS.LEAVE_ROOM, { conversationId });
-        };
     }, [userId, activeConversationId]);
 }
 
 /**
- * Lightweight unread-badge subscriber for the Header — does not mount the chat
- * UI. Loads the conversation list once per authenticated session, then tracks
- * the store's aggregate unread count.
+ * Aggregate unread-message count for the navbar badge. The realtime provider
+ * keeps the store live app-wide; this only makes sure the conversation index
+ * is loaded once per signed-in user.
  */
 export function useChatBadge(): number {
     const { user } = useAuth();

@@ -40,8 +40,11 @@ export const CHAT_EVENTS = {
     MEMBER_ADDED: 'memberAdded', MEMBER_REMOVED: 'memberRemoved',
     MESSAGE_PINNED: 'messagePinned', POLL_UPDATED: 'pollUpdated', EVENT_UPDATED: 'eventUpdated',
     PRESENCE_STATE: 'presenceState', SUBSCRIBE_PRESENCE: 'subscribePresence',
-    SET_STATUS: 'setStatus', BADGE_UPDATE: 'badgeUpdate',
+    SET_STATUS: 'setStatus', BADGE_UPDATE: 'badgeUpdate', ROOMS_READY: 'roomsReady',
 } as const;
+
+/** /notification event: the signed-in user's course access changed (approval, purchase, batch). */
+export const ACCESS_UPDATED_EVENT = 'access_updated';
 
 export type ChatUserRole = 'admin' | 'student' | 'teacher';
 
@@ -83,6 +86,8 @@ export interface ChatReplyRef {
     sender_name: string;
     preview: string;
     type: MessageType;
+    /** The original was deleted for everyone. */
+    deleted?: boolean;
 }
 
 export interface ChatSystemEvent {
@@ -118,6 +123,10 @@ export interface ChatMessage {
     deleted_by: string | null;
     delivered_to: string[];
     read_by: string[];
+    /** Members other than the sender when it was sent (0 on legacy messages). */
+    recipient_count?: number;
+    delivered_count?: number;
+    read_count?: number;
     scheduled_for: string | null;
     system_event: ChatSystemEvent | null;
     poll_id: string | null;
@@ -159,8 +168,10 @@ export interface ConversationMembership {
     archived: boolean;
     notifications_muted: boolean;
     last_read_at: string | null;
+    last_read_message_id?: string | null;
     muted_until?: string | null;
     banned?: boolean;
+    joined_at?: string;
 }
 
 export interface ChatConversation {
@@ -279,12 +290,15 @@ export interface ChatProfileStreak {
 export interface ChatProfilePrivacy {
     show_online: boolean;
     allow_dms: 'everyone' | 'friends' | 'none';
+    /** Listed in Friends → Discover (default true). */
+    discoverable?: boolean;
 }
 
 export type FriendshipStatus = 'self' | 'friends' | 'request_sent' | 'request_received' | 'none' | 'blocked';
 
 export interface ChatProfileView {
-    user: ChatUserSummary;
+    user: ChatUserSummary & { avatar_url?: string | null };
+    avatar_url?: string | null;
     bio: string;
     skills: string[];
     interests: string[];
@@ -301,6 +315,7 @@ export interface ChatProfileView {
 }
 
 export interface UpdateChatProfileInput {
+    avatar_url?: string | null;
     bio?: string;
     skills?: string[];
     interests?: string[];
@@ -499,7 +514,9 @@ export interface TypingPayload {
 export interface MessageDeletedPayload {
     conversation_id: string;
     message_id: string;
-    scope: 'everyone';
+    /** 'me' is only ever sent to the deleting user's own sessions. */
+    scope: 'everyone' | 'me';
+    deleted_by?: string;
 }
 
 export interface MessageReactionPayload {
@@ -508,18 +525,92 @@ export interface MessageReactionPayload {
     emoji: string;
     user_id: string;
     action: 'added' | 'removed';
+    /** Authoritative full reaction list after the change. */
+    reactions?: ChatReaction[];
+}
+
+/** Fresh receipt counters for messages whose receipts just changed. */
+export interface ReceiptCounts {
+    message_id: string;
+    delivered_count: number;
+    read_count: number;
+    recipient_count: number;
 }
 
 export interface MessageReadPayload {
     conversation_id: string;
     user_id: string;
     up_to_message_id?: string | null;
+    read_at?: string;
+    receipts?: ReceiptCounts[];
 }
 
 export interface MessageDeliveredPayload {
     conversation_id: string;
     user_id: string;
     message_ids: string[];
+    receipts?: ReceiptCounts[];
+}
+
+/** A person as shown in reaction / receipt lists. */
+export interface ChatPerson {
+    id: string;
+    name: string;
+    avatar_url: string | null;
+}
+
+export interface ReactionDetail {
+    emoji: string;
+    count: number;
+    users: ChatPerson[];
+}
+
+export interface MessageInfo {
+    message_id: string;
+    conversation_id: string;
+    sent_at: string;
+    edited_at: string | null;
+    recipient_count: number;
+    read: Array<{ user: ChatPerson; read_at: string | null; delivered_at: string | null }>;
+    delivered: Array<{ user: ChatPerson; delivered_at: string | null }>;
+    pending: Array<{ user: ChatPerson }>;
+}
+
+export type InviteStatus = 'valid' | 'invalid' | 'revoked' | 'expired' | 'exhausted' | 'locked' | 'unavailable';
+
+export interface InviteLink {
+    token: string;
+    created_at: string;
+    expires_at: string | null;
+    max_uses: number | null;
+    use_count: number;
+}
+
+export interface InvitePreview {
+    status: InviteStatus;
+    is_member: boolean;
+    expires_at?: string | null;
+    conversation: {
+        id: string;
+        name: string;
+        description: string;
+        avatar_url: string | null;
+        type: ConversationType;
+        member_count: number;
+    } | null;
+}
+
+/** A card in Friends → Discover. */
+export interface DiscoverStudent {
+    id: string;
+    name: string;
+    avatar_url: string | null;
+    bio: string;
+    skills: string[];
+    status: 'friends' | 'request_sent' | 'request_received' | 'none';
+    request_id: string | null;
+    mutual_friends: number;
+    mutual_batches: number;
 }
 
 export interface MessagePinnedPayload {
@@ -537,6 +628,7 @@ export interface ConversationUpdatedPayload {
 
 export interface BadgeUpdatePayload {
     conversation_id: string;
+    unread_count?: number;
 }
 
 export interface UserPresencePayload {
