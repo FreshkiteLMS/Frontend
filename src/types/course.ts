@@ -70,4 +70,23 @@ export interface CourseGroup {
      * students; omitted from the public discovery listing.
      */
     document_url?: string | null;
+    created_at?: string;
+    /** Used for optimistic concurrency when saving edits. */
+    updated_at?: string;
+    /** Admin listing only: member courses (embedded list ∪ Course.group). */
+    course_count?: number;
+    /** Admin listing only: paid purchases of this bundle. */
+    purchase_count?: number;
+}
+
+/** Writable bundle fields; `courseIds` sets membership AND order in one save. */
+export interface BundleSaveInput {
+    name?: string;
+    description?: string;
+    price?: number;
+    image_url?: string;
+    status?: 'active' | 'inactive';
+    document_url?: string | null;
+    courseIds?: string[];
+    expected_updated_at?: string;
 }

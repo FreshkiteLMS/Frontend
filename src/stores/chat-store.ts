@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { chatService } from '@/services/api/chat.api';
+import { chatService, type ForwardFailure } from '@/services/api/chat.api';
 import {
     type ChatAttachment,
     type ChatConversation,
@@ -343,7 +343,10 @@ export interface ChatState {
     deleteMessage: (messageId: string, scope: 'me' | 'everyone') => Promise<void>;
     pinMessage: (messageId: string, pin: boolean) => Promise<void>;
     starMessage: (messageId: string, star: boolean) => Promise<void>;
-    forwardMessages: (messageIds: string[], conversationIds: string[]) => Promise<void>;
+    forwardMessages: (
+        messageIds: string[],
+        targets: { conversationIds?: string[]; userIds?: string[] }
+    ) => Promise<{ failed: ForwardFailure[] }>;
     upvoteMessage: (messageId: string, up: boolean) => Promise<void>;
     acceptAnswer: (rootMessageId: string, replyMessageId: string) => Promise<void>;
 
@@ -1062,8 +1065,10 @@ export const useChatStore = create<ChatState>()((set, get) => {
             }
         },
 
-        forwardMessages: async (messageIds, conversationIds) => {
-            await chatService.forwardMessages(messageIds, conversationIds);
+        forwardMessages: async (messageIds, targets) => {
+            // New messages (and any newly created direct chat) arrive over the socket.
+            const { failed } = await chatService.forwardMessages(messageIds, targets);
+            return { failed };
         },
 
         upvoteMessage: async (messageId, up) => {

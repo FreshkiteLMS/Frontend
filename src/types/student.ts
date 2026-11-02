@@ -10,6 +10,8 @@ export interface StudentEnrollmentData {
 }
 
 export interface Student {
+    /** Human-readable LMS Student ID, e.g. FK-2026-00001 (null until assigned). */
+    studentCode?: string | null;
     id: string;
     name: string;
     email: string;
@@ -21,6 +23,7 @@ export interface Student {
 export interface AdminStudentRow {
     id: string;
     userId: string;
+    studentCode?: string | null;
     name: string;
     email: string;
     phone?: string | null;
@@ -70,6 +73,7 @@ export interface StudentBatchDetail {
 export interface StudentDetails {
     id: string;
     userId: string;
+    studentCode?: string | null;
     personalInfo: {
         name: string;
         email: string;

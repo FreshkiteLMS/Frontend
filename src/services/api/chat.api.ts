@@ -26,6 +26,14 @@ import type {
     SendMessagePayload,
 } from '@/types/chat';
 
+/** A forward recipient the server refused; the others were still delivered. */
+export interface ForwardFailure {
+    kind: 'conversation' | 'user';
+    id: string;
+    status: number;
+    message: string;
+}
+
 /** Unwrap the standard `{success, data, message}` envelope. */
 function unwrap<T>(response: { data: { success: boolean; data: T; message?: string } }, fallback: string): T {
     if (response.data.success) return response.data.data;
@@ -250,12 +258,22 @@ export const chatService = {
         return unwrap<ChatMessage>(response, 'Failed to accept answer');
     },
 
-    forwardMessages: async (messageIds: string[], conversationIds: string[]): Promise<ChatMessage[]> => {
+    /**
+     * Forward to conversations and/or people (`userIds` → the direct chat with
+     * each, created if needed). `failed` lists recipients the server refused
+     * (blocked, DMs closed, locked group…) while the rest were delivered.
+     */
+    forwardMessages: async (
+        messageIds: string[],
+        targets: { conversationIds?: string[]; userIds?: string[] }
+    ): Promise<{ messages: ChatMessage[]; failed: ForwardFailure[] }> => {
         const response = await api.post('/chat/messages/forward', {
             message_ids: messageIds,
-            conversation_ids: conversationIds,
+            conversation_ids: targets.conversationIds ?? [],
+            user_ids: targets.userIds ?? [],
         });
-        return unwrap<ChatMessage[]>(response, 'Failed to forward messages');
+        const messages = unwrap<ChatMessage[]>(response, 'Failed to forward messages');
+        return { messages, failed: Array.isArray(response.data?.failed) ? response.data.failed : [] };
     },
 
     getThread: async (

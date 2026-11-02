@@ -28,6 +28,10 @@ interface RazorpayOptions {
     theme?: {
         color?: string;
     };
+    modal?: {
+        /** The student closed Razorpay without paying. */
+        ondismiss?: () => void;
+    };
 }
 
 export const useRazorpay = () => {

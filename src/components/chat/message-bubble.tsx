@@ -44,6 +44,7 @@ import { ImageLightbox } from '@/components/chat/image-lightbox';
 import { MessageInfoModal } from '@/components/chat/message-info-modal';
 import { FloatingMenu, type MenuAnchor } from '@/components/ui/floating-menu';
 import { ForwardModal } from '@/components/chat/forward-modal';
+import { Portal } from '@/components/ui/modal';
 import { ReportModal } from '@/components/chat/report-modal';
 import { PollMessage } from '@/components/chat/poll-message';
 import { EventCard } from '@/components/chat/event-card';
@@ -762,13 +763,16 @@ export function MessageBubble({
             {lightboxIndex !== null && lightboxImages.length > 0 && (
                 <ImageLightbox images={lightboxImages} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
             )}
-            {infoOpen && <MessageInfoModal message={message} onClose={() => setInfoOpen(false)} />}
+            {/* Dialogs render in <body>: this row has `content-visibility: auto`
+                (paint/layout containment), which would clip a fixed overlay to the row. */}
+            {infoOpen && <Portal><MessageInfoModal message={message} onClose={() => setInfoOpen(false)} /></Portal>}
 
             {/* Delete scope dialog */}
             {deleteOpen && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+                <Portal>
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Delete message">
                     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteOpen(false)} />
-                    <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+                    <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 w-full max-w-md ui-pop-in">
                         <div className="flex items-start justify-between p-5 border-b border-gray-100 dark:border-gray-800">
                             <h3 className="font-bold text-gray-900 dark:text-white">Delete message</h3>
                             <button
@@ -800,10 +804,12 @@ export function MessageBubble({
                         </div>
                     </div>
                 </div>
+                </Portal>
             )}
 
             {forwardOpen && <ForwardModal messageIds={[message.id]} onClose={() => setForwardOpen(false)} />}
             {reportOpen && (
+                <Portal>
                 <ReportModal
                     target={{
                         type: 'message',
@@ -813,6 +819,7 @@ export function MessageBubble({
                     }}
                     onClose={() => setReportOpen(false)}
                 />
+                </Portal>
             )}
         </div>
     );

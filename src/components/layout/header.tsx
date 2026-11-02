@@ -25,6 +25,8 @@ import {
     Settings,
     HeartHandshake,
     ChevronDown,
+    Package,
+    TicketPercent,
     type LucideIcon,
 } from 'lucide-react';
 import { notificationService, Notification } from '@/services/api/notification.api';
@@ -45,6 +47,8 @@ const ADMIN_NAV: NavItem[] = [
     { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: '/admin/students', label: 'Students', icon: Users },
     { href: '/admin/batches', label: 'Batches', icon: Layers },
+    { href: '/admin/bundles', label: 'Bundles', icon: Package },
+    { href: '/admin/discounts', label: 'Discounts', icon: TicketPercent },
     { href: '/admin/enrollment-requests', label: 'Requests', icon: ClipboardCheck },
     { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
 ];

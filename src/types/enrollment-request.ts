@@ -7,6 +7,8 @@ export interface EnrollmentRequest {
     user_id: string;
     student_name: string;
     student_email: string;
+    /** Requester's human-readable Student ID (admin list). */
+    student_code?: string | null;
     product_type: ProductType;
     product_id: string;
     product_name: string;

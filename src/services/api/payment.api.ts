@@ -5,6 +5,8 @@ export interface CreateOrderParams {
     currency: string;
     receipt?: string;
     notes?: Record<string, string>;
+    /** Only the code is sent; the server validates it and computes the amount. */
+    couponCode?: string;
 }
 
 export interface RazorpayOrder {
@@ -15,6 +17,9 @@ export interface RazorpayOrder {
     receipt: string;
     status: string;
     notes?: Record<string, any>;
+    keyId?: string; // Public Razorpay key the order was created with
+    pricing?: { originalAmount: number; discountAmount: number; finalAmount: number };
+    discount?: { discountId: string; code: string; type: 'percentage' | 'fixed'; value: number } | null;
 }
 
 export const paymentService = {

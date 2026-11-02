@@ -211,6 +211,8 @@ export interface AccountOverview {
         username: string | null;
         email: string;
         role: string;
+        /** Human-readable Student ID (students only). */
+        student_code?: string | null;
         created_at: string | null;
         has_password: boolean;
         email_change_supported: boolean;

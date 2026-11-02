@@ -8,6 +8,7 @@ import { useChatStore } from '@/stores/chat-store';
 import { avatarColorFor, initialsOf } from '@/lib/chat-utils';
 import { ReactionPicker } from '@/components/chat/reaction-picker';
 import { EmojiPopover } from '@/components/chat/emoji-popover';
+import { FloatingMenu, type MenuAnchor } from '@/components/ui/floating-menu';
 import type { ChatMessage, ChatPerson, ConversationType, ReactionDetail } from '@/types/chat';
 
 /** Who reacted, fetched lazily and cached per message + reaction state. */
@@ -47,9 +48,14 @@ export function ReactionChips({
 }) {
     const reactToMessage = useChatStore((s) => s.reactToMessage);
     const [openEmoji, setOpenEmoji] = useState<string | null>(null);
+    // Popovers are portaled (FloatingMenu): the message row's `content-visibility`
+    // containment would otherwise clip anything drawn outside it.
+    const [whoAnchor, setWhoAnchor] = useState<MenuAnchor | null>(null);
+    const chipRefs = useRef(new Map<string, HTMLElement>());
     const [details, setDetails] = useState<ReactionDetail[] | null>(() => detailCache.get(cacheKey(message)) ?? null);
     const [loading, setLoading] = useState(false);
     const [quickOpen, setQuickOpen] = useState(false);
+    const [quickAnchor, setQuickAnchor] = useState<MenuAnchor | null>(null);
     const [fullOpen, setFullOpen] = useState(false);
     const hoverTimer = useRef<number | null>(null);
     const longPress = useRef<number | null>(null);
@@ -72,7 +78,8 @@ export function ReactionChips({
     useEffect(() => {
         if (!openEmoji) return;
         const onDown = (e: MouseEvent | TouchEvent) => {
-            if (!rootRef.current?.contains(e.target as Node)) setOpenEmoji(null);
+            const t = e.target as HTMLElement | null;
+            if (!rootRef.current?.contains(t) && !t?.closest?.('.reaction-who-popover')) setOpenEmoji(null);
         };
         document.addEventListener('mousedown', onDown);
         document.addEventListener('touchstart', onDown);
@@ -101,6 +108,8 @@ export function ReactionChips({
     };
 
     const show = (emoji: string) => {
+        const rect = chipRefs.current.get(emoji)?.getBoundingClientRect();
+        if (rect) setWhoAnchor({ kind: 'rect', rect, align: isOwn ? 'end' : 'start' });
         setOpenEmoji(emoji);
         void ensureDetails();
     };
@@ -120,6 +129,7 @@ export function ReactionChips({
                 return (
                     <div
                         key={r.emoji}
+                        ref={(el) => { if (el) chipRefs.current.set(r.emoji, el); else chipRefs.current.delete(r.emoji); }}
                         className="relative"
                         onMouseEnter={() => {
                             hoverTimer.current = window.setTimeout(() => show(r.emoji), 350);
@@ -153,10 +163,11 @@ export function ReactionChips({
                             <span className="font-semibold tabular-nums">{r.user_ids.length}</span>
                         </button>
 
-                        {openEmoji === r.emoji && (
-                            <div
-                                role="tooltip"
-                                className={`absolute bottom-full mb-1.5 z-50 w-56 max-h-64 overflow-y-auto rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 p-2 ${isOwn ? 'right-0' : 'left-0'}`}
+                        {openEmoji === r.emoji && whoAnchor && (
+                            <FloatingMenu
+                                anchor={whoAnchor}
+                                onClose={() => setOpenEmoji(null)}
+                                className="reaction-who-popover w-56 max-h-64 rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 p-2 pointer-events-none"
                             >
                                 <p className="px-1 pb-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
                                     <span className="text-base">{r.emoji}</span> {r.user_ids.length} {r.user_ids.length === 1 ? 'person' : 'people'}
@@ -173,7 +184,7 @@ export function ReactionChips({
                                         ))}
                                     </ul>
                                 )}
-                            </div>
+                            </FloatingMenu>
                         )}
                     </div>
                 );
@@ -181,7 +192,10 @@ export function ReactionChips({
 
             <button
                 ref={plusRef}
-                onClick={() => setQuickOpen((v) => !v)}
+                onClick={(e) => {
+                    setQuickAnchor({ kind: 'rect', rect: e.currentTarget.getBoundingClientRect(), align: isOwn ? 'end' : 'start' });
+                    setQuickOpen((v) => !v);
+                }}
                 className={`flex items-center justify-center w-7 h-6 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-opacity ${
                     reactions.length ? 'opacity-60 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
                 }`}
@@ -190,8 +204,12 @@ export function ReactionChips({
                 {reactions.length ? <Plus className="w-3.5 h-3.5" /> : <SmilePlus className="w-3.5 h-3.5" />}
             </button>
 
-            {quickOpen && (
-                <div className={`absolute bottom-8 z-50 ${isOwn ? 'right-0' : 'left-0'}`}>
+            {quickOpen && quickAnchor && (
+                <FloatingMenu
+                    anchor={quickAnchor}
+                    onClose={() => setQuickOpen(false)}
+                    className="rounded-full"
+                >
                     <ReactionPicker
                         onPick={(emoji) => toggle(emoji)}
                         onClose={() => setQuickOpen(false)}
@@ -201,7 +219,7 @@ export function ReactionChips({
                             setFullOpen(true);
                         }}
                     />
-                </div>
+                </FloatingMenu>
             )}
             {fullOpen && (
                 <EmojiPopover

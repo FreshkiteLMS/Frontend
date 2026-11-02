@@ -58,6 +58,26 @@ export function FloatingMenu({
         setPos({ top, left, maxHeight: vh - top - MARGIN });
     }, [anchor]);
 
+    // Menus (not popovers): move focus onto the first item so ↑/↓ work at once.
+    useEffect(() => {
+        if (!pos) return;
+        ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true });
+        // Only once the menu has been placed.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pos === null]);
+
+    const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+        const items = Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? []);
+        if (!items.length) return;
+        const i = items.indexOf(document.activeElement as HTMLElement);
+        const go = (n: number) => { e.preventDefault(); items[(n + items.length) % items.length].focus(); };
+        if (e.key === 'ArrowDown') go(i + 1);
+        else if (e.key === 'ArrowUp') go(i - 1);
+        else if (e.key === 'Home') go(0);
+        else if (e.key === 'End') go(items.length - 1);
+        else if (e.key === 'Tab') onClose();
+    };
+
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
         // A fixed menu would drift away from its message while scrolling.
@@ -80,6 +100,7 @@ export function FloatingMenu({
         <div
             ref={ref}
             role="menu"
+            onKeyDown={onKeyDown}
             className={`fixed z-[95] overflow-y-auto ${className}`}
             style={{
                 top: pos?.top ?? -9999,

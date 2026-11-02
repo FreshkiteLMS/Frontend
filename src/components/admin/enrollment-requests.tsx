@@ -165,7 +165,7 @@ export function EnrollmentRequests() {
                                                 </div>
                                                 <div className="min-w-0">
                                                     <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{r.student_name}</p>
-                                                    <p className="text-xs text-gray-400 truncate">{r.student_email}</p>
+                                                    <p className="text-xs text-gray-400 truncate">{r.student_code && <span className="font-mono mr-1.5 text-gray-500 dark:text-gray-400">{r.student_code}</span>}{r.student_email}</p>
                                                 </div>
                                             </div>
                                         </td>
@@ -277,6 +277,7 @@ function DetailModal({ req, onClose }: { req: EnrollmentRequest; onClose: () => 
                 </div>
                 <div className="p-5">
                     {row("Student", req.student_name)}
+                    {req.student_code && row("Student ID", req.student_code)}
                     {row("Email", req.student_email)}
                     {row("Product", req.product_name)}
                     {row("Type", req.product_type.replace("_", "-"))}

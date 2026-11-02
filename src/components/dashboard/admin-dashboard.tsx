@@ -19,7 +19,8 @@ import {
     ShieldCheck,
     ListChecks,
     AlertTriangle,
-    IndianRupee
+    IndianRupee,
+    TicketPercent
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
@@ -27,10 +28,9 @@ import { adminService } from '@/services/api/admin.api';
 import { batchService } from '@/services/api/batch.api';
 import { courseService } from '@/services/api/course.api';
 import { studentService } from '@/services/api/student.api';
-import { courseGroupService } from '@/services/api/courseGroupService';
 import { DashboardStats } from '@/types/common';
 import { Batch } from '@/types/batch';
-import { Course, CourseGroup } from '@/types/course';
+import { Course } from '@/types/course';
 import { Student } from '@/types/student';
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -295,23 +295,6 @@ export function AdminDashboard() {
         router.push(`/admin/batches?edit=${id}`);
     };
 
-    const handleEditGroup = (id: string) => {
-        router.push(`/admin/course-groups/create?id=${id}`);
-    };
-
-    const handleDeleteGroup = async (id: string, name: string) => {
-        if (window.confirm(`Are you sure you want to delete the course group "${name}"?`)) {
-            try {
-                await courseGroupService.deleteGroup(id);
-                toast.success('Course group deleted successfully');
-                fetchData();
-            } catch (error) {
-                console.error('Failed to delete group:', error);
-                toast.error('Failed to delete course group');
-            }
-        }
-    };
-
     const quickActions = [
         {
             icon: BarChart3,
@@ -350,10 +333,17 @@ export function AdminDashboard() {
         },
         {
             icon: BookOpen,
-            label: 'New Bundle',
-            description: 'Group courses into a bundle',
+            label: 'Bundles',
+            description: 'Edit bundles, courses & order',
             color: 'bg-rose-500',
-            action: () => handleNavigate('/admin/course-groups/create')
+            action: () => handleNavigate('/admin/bundles')
+        },
+        {
+            icon: TicketPercent,
+            label: 'Discounts',
+            description: 'Coupons for courses, bundles & Master Plan',
+            color: 'bg-violet-500',
+            action: () => handleNavigate('/admin/discounts')
         }
     ];
 
@@ -449,7 +439,7 @@ export function AdminDashboard() {
             {/* Quick Actions */}
             <div className="mb-8">
                 <h3 className="text-gray-900 dark:text-white text-lg font-semibold mb-4">Quick Actions</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
                     {quickActions.map((action) => (
                         <button
                             key={action.label}
@@ -703,7 +693,7 @@ export function AdminDashboard() {
                                 ) : (
                                     students.map((student) => (
                                         <tr key={student.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{student.id}</td>
+                                            <td className="px-6 py-4 text-sm font-mono text-gray-900 dark:text-white whitespace-nowrap">{student.studentCode || <span className="text-gray-400" title="Not assigned yet — run the Student ID migration">—</span>}</td>
                                             <td className="px-6 py-4 text-sm text-gray-900 dark:text-white font-medium">{student.name}</td>
                                             <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{student.email}</td>
                                             <td className="px-6 py-4 text-sm">
@@ -771,6 +761,20 @@ export function AdminDashboard() {
                                                             <ListChecks className="w-3.5 h-3.5" aria-hidden="true" /> Student progress
                                                         </button>
                                                     )}
+                                                    <button
+                                                        onClick={() => handleNavigate(`/admin/discounts?create=${encodeURIComponent(`COURSE:${course.id}`)}`)}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:text-violet-600 hover:border-violet-400 transition-colors"
+                                                        title={`Create a discount for ${course.title}`}
+                                                    >
+                                                        <TicketPercent className="w-3.5 h-3.5" aria-hidden="true" /> Discount
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleNavigate(`/admin/discounts?product=${encodeURIComponent(`course:${course.id}`)}`)}
+                                                        className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-violet-600 hover:underline transition-colors"
+                                                        title={`Coupons for ${course.title}`}
+                                                    >
+                                                        Coupons
+                                                    </button>
                                                     <button
                                                         onClick={() => handleNavigate(`/admin/courses/${course.id}/preview`)}
                                                         className="text-gray-400 hover:text-blue-600 transition-colors"

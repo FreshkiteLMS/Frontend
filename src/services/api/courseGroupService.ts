@@ -1,5 +1,5 @@
 import api from './axios';
-import { CourseGroup } from '@/types/course';
+import { CourseGroup, BundleSaveInput } from '@/types/course';
 
 export interface BundleCourseRef {
     _id: string;
@@ -39,6 +39,24 @@ export const courseGroupService = {
     },
 
     /**
+     * Create a bundle with its courses (in order) in one call.
+     */
+    createBundle: async (data: BundleSaveInput): Promise<CourseGroup> => {
+        const response = await api.post('/course-groups', data);
+        return response.data.data;
+    },
+
+    /**
+     * Save bundle details and, with `courseIds`, its courses and their order —
+     * one atomic write. `expected_updated_at` makes a concurrent edit fail with
+     * 409 instead of being overwritten.
+     */
+    saveBundle: async (id: string, data: BundleSaveInput): Promise<CourseGroup> => {
+        const response = await api.put(`/course-groups/${id}`, data);
+        return response.data.data;
+    },
+
+    /**
      * Delete a course group
      */
     deleteGroup: async (id: string) => {
@@ -49,7 +67,7 @@ export const courseGroupService = {
     /**
      * Get all course groups (shallow — admin use)
      */
-    getAllGroups: async () => {
+    getAllGroups: async (): Promise<CourseGroup[]> => {
         const response = await api.get('/course-groups/all');
         return response.data.data;
     },

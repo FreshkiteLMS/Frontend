@@ -69,7 +69,14 @@ export function StudentDetail({ studentId }: { studentId: string }) {
                         {personalInfo.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{personalInfo.name}</h1>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{personalInfo.name}</h1>
+                            {details.studentCode && (
+                                <span className="inline-flex items-center rounded-lg bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 font-mono text-sm font-semibold text-blue-700 dark:text-blue-300" title="Student ID">
+                                    {details.studentCode}
+                                </span>
+                            )}
+                        </div>
                         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2 text-sm text-gray-500 dark:text-gray-400">
                             <span className="flex items-center gap-1.5"><Mail className="w-4 h-4" />{personalInfo.email}</span>
                             {personalInfo.phone && <span className="flex items-center gap-1.5"><Phone className="w-4 h-4" />{personalInfo.phone}</span>}

@@ -152,6 +152,7 @@ export function CourseCard({ course, compact = false, showSubContent = false, su
                             currency="INR"
                             courseId={(course as any)._id || course.id}
                             itemType={isCohort ? 'bundle' : 'course'}
+                            productName={course.title}
                             userDetails={{
                                 name: user?.name || '',
                                 email: user?.email || '',

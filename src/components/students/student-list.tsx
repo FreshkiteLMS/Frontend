@@ -13,6 +13,7 @@ type SortKey = 'name' | 'overallProgress' | 'purchasedCourses' | 'lastActive' | 
 
 const SEARCH_FIELDS = [
     { value: 'q', label: 'All Fields' },
+    { value: 'student_code', label: 'Student ID' },
     { value: 'first_name', label: 'First Name' },
     { value: 'last_name', label: 'Last Name' },
     { value: 'email', label: 'Email' },
@@ -121,7 +122,7 @@ export function StudentList() {
                             <input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search students..."
+                                placeholder={searchType === 'student_code' ? 'e.g. FK-2026-00042' : 'Search name, email or Student ID'}
                                 className="w-56 pl-9 pr-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                             />
                             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -141,6 +142,7 @@ export function StudentList() {
                     <table className="w-full">
                         <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
                             <tr>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Student ID</th>
                                 <SortHead label="Name" k="name" />
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contact</th>
                                 <SortHead label="Courses" k="purchasedCourses" />
@@ -155,14 +157,14 @@ export function StudentList() {
                             {loading ? (
                                 [...Array(6)].map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td colSpan={8} className="px-4 py-4">
+                                        <td colSpan={9} className="px-4 py-4">
                                             <div className="h-5 bg-gray-100 dark:bg-gray-800 rounded w-full" />
                                         </td>
                                     </tr>
                                 ))
                             ) : sorted.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="px-4 py-16 text-center">
+                                    <td colSpan={9} className="px-4 py-16 text-center">
                                         <Users className="w-10 h-10 text-gray-200 dark:text-gray-700 mx-auto mb-3" />
                                         <p className="text-gray-500 dark:text-gray-400">No students found.</p>
                                     </td>
@@ -174,6 +176,11 @@ export function StudentList() {
                                         onClick={() => router.push(`/admin/students/${s.id}`)}
                                         className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors cursor-pointer"
                                     >
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            {s.studentCode
+                                                ? <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5">{s.studentCode}</span>
+                                                : <span className="text-xs text-gray-400" title="Not assigned yet">—</span>}
+                                        </td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">

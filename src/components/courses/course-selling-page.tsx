@@ -139,6 +139,7 @@ function BundleCard({ group, isExpanded, isOwned, accessReady, onToggle, request
                             currency="INR"
                             courseId={(group as any)._id}
                             itemType="bundle"
+                            productName={group.name}
                             userDetails={{ name: user?.name || "", email: user?.email || "", contact: "" }}
                             label="Enroll in Bundle"
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-sm transition-all flex items-center justify-center"
@@ -369,6 +370,7 @@ export function CourseSellingPage() {
                                         currency={currency}
                                         courseId="master-subscription"
                                         itemType="bundle"
+                                        productName="freshkite Complete Course (Master Plan)"
                                         userDetails={{ name: user?.name || "", email: user?.email || "", contact: "" }}
                                         label="Enroll Now — Get Full Access"
                                         className="bg-white text-blue-700 hover:bg-blue-50 font-black px-8 py-3.5 rounded-xl text-sm transition-all shadow-xl shadow-blue-900/30 active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap"

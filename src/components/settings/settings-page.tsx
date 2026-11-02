@@ -202,6 +202,12 @@ function AccountSection({ data, onSaved }: { data: AccountOverview; onSaved: (a:
                     <TextInput value={data.account.email} onChange={() => undefined} disabled />
                     <span className="block text-xs text-gray-400 mt-1">Email changes need verification, which isn’t available yet — contact an administrator to change it.</span>
                 </Field>
+                {data.account.student_code && (
+                    <Field label="Student ID">
+                        <TextInput value={data.account.student_code} onChange={() => undefined} disabled />
+                        <span className="block text-xs text-gray-400 mt-1">Quote this ID when you contact support. It never changes.</span>
+                    </Field>
+                )}
                 <Field label="Account">
                     <div className="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">
                         {data.account.role === 'admin' ? 'Administrator' : data.account.role === 'teacher' ? 'Mentor' : 'Student'}{data.account.created_at && ` · member since ${formatDate(data.account.created_at)}`}

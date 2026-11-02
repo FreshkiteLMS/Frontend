@@ -19,7 +19,7 @@ export function CourseExplore() {
     const isAdmin = user?.role === 'admin';
 
     const handleEditGroup = (id: string) => {
-        router.push(`/admin/course-groups/create?id=${id}`);
+        router.push(`/admin/bundles/${id}`);
     };
 
     const handleDeleteGroup = async (id: string, name: string) => {

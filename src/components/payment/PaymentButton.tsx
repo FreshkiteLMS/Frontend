@@ -9,12 +9,17 @@ import { env } from '@/config/env';
 import toast from 'react-hot-toast';
 import { refreshCourseAccess } from '@/hooks/use-course-access';
 import { useAuth } from '@/hooks/use-auth';
+import { apiErrorMessage } from '@/services/api/discount.api';
+import { formatPaise } from '@/lib/money';
+import { CheckoutModal, type AppliedCoupon } from './CheckoutModal';
 
 interface PaymentButtonProps {
-    amount: number; // Amount in smallest unit (e.g., paise)
+    amount: number; // Amount in smallest unit (e.g., paise) — display only; the server prices the order
     currency: string;
     courseId: string;
     itemType: 'course' | 'bundle';
+    /** Shown in the checkout summary. */
+    productName?: string;
     userDetails?: {
         name: string;
         email: string;
@@ -26,14 +31,17 @@ interface PaymentButtonProps {
     label?: string;
 }
 
-export default function PaymentButton({ amount, currency, courseId, itemType, userDetails, onSuccess, onFailure, className, label }: PaymentButtonProps) {
+export default function PaymentButton({ amount, currency, courseId, itemType, productName, userDetails, onSuccess, onFailure, className, label }: PaymentButtonProps) {
     const { displayRazorpay } = useRazorpay();
     const router = useRouter();
     const { user } = useAuth();
+    const [checkoutOpen, setCheckoutOpen] = useState(false);
+    const [coupon, setCoupon] = useState<AppliedCoupon | null>(null);
+    const [couponError, setCouponError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
 
-    const handlePayment = async (e?: React.MouseEvent) => {
+    const openCheckout = (e?: React.MouseEvent) => {
         if (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -48,27 +56,38 @@ export default function PaymentButton({ amount, currency, courseId, itemType, us
             router.push('/login');
             return;
         }
+        setCheckoutOpen(true);
+    };
 
+    const handlePayment = async () => {
         setIsLoading(true);
         try {
-            // 1. Create Order via Backend using Service
+            // 1. Create the order. Only WHAT is bought and the coupon CODE are
+            //    sent; the server re-validates the coupon and sets the amount.
             const order = await paymentService.createOrder({
-                amount,
+                amount: coupon?.finalAmount ?? amount,
                 currency,
                 receipt: `rcpt_${courseId.slice(-10)}_${Date.now().toString().slice(-8)}`,
                 notes: {
                     itemType,
                     itemId: courseId
-                }
+                },
+                couponCode: coupon?.coupon.code,
             });
 
-            // 2. Open Razorpay Checkout
+            const expected = coupon?.finalAmount ?? amount;
+            if (order.amount !== expected) {
+                toast(`The price was updated to ${formatPaise(order.amount, order.currency)}.`, { icon: 'ℹ️' });
+            }
+
+            // 2. Open Razorpay Checkout (our sheet steps aside while it is open)
+            setCheckoutOpen(false);
             const options = {
-                key: env.RAZORPAY_KEY_ID,
+                key: order.keyId || env.RAZORPAY_KEY_ID,
                 amount: order.amount,
                 currency: order.currency,
                 name: 'Freshkite LMS',
-                description: 'Course Purchase',
+                description: productName ? productName.slice(0, 250) : 'Course Purchase',
                 order_id: order.orderId,
                 handler: async function (response: RazorpayResponse) {
                     try {
@@ -81,6 +100,7 @@ export default function PaymentButton({ amount, currency, courseId, itemType, us
                             razorpay_signature: response.razorpay_signature
                         });
                         await refreshCourseAccess();
+                        setCoupon(null);
 
                         if (onSuccess) {
                             onSuccess(response);
@@ -94,6 +114,10 @@ export default function PaymentButton({ amount, currency, courseId, itemType, us
                     } finally {
                         setIsVerifying(false);
                     }
+                },
+                modal: {
+                    // Closed without paying: bring the summary back (coupon kept).
+                    ondismiss: () => setCheckoutOpen(true),
                 },
                 prefill: {
                     name: userDetails?.name || '',
@@ -111,16 +135,26 @@ export default function PaymentButton({ amount, currency, courseId, itemType, us
             await displayRazorpay(options);
 
         } catch (error: any) {
+            const code = error.response?.data?.error?.code;
             // The server refuses to charge for something already owned (it prices
             // and checks ownership itself) — take the student to their courses.
-            if (error.response?.data?.error?.code === 'ALREADY_OWNED') {
+            if (code === 'ALREADY_OWNED') {
+                setCheckoutOpen(false);
                 toast.success('You already have access — no payment needed.');
                 await refreshCourseAccess();
                 router.push('/student/courses');
                 return;
             }
+            // The coupon stopped being valid between "Apply" and "Pay" (expired,
+            // limit reached…): drop it and say why; the price shown reverts.
+            if (typeof code === 'string' && code.startsWith('COUPON_')) {
+                setCoupon(null);
+                setCouponError(apiErrorMessage(error));
+                setCheckoutOpen(true);
+                return;
+            }
             console.error('Payment Error:', error);
-            const errorMessage = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'Something went wrong during payment initialization.';
+            const errorMessage = apiErrorMessage(error, 'Something went wrong during payment initialization.');
 
             if (onFailure) {
                 onFailure(error);
@@ -136,19 +170,35 @@ export default function PaymentButton({ amount, currency, courseId, itemType, us
     const disabledClass = (isLoading || isVerifying) ? 'opacity-70 cursor-not-allowed' : '';
 
     return (
-        <button
-            onClick={handlePayment}
-            disabled={isLoading || isVerifying}
-            className={className ? `${className} ${disabledClass}` : `${baseClass} ${disabledClass}`}
-        >
-            {isLoading || isVerifying ? (
-                <>
-                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    {isVerifying ? 'Verifying...' : amount > 0 ? 'Opening...' : 'Processing...'}
-                </>
-            ) : (
-                label ?? 'Buy Now'
-            )}
-        </button>
+        <>
+            <button
+                onClick={openCheckout}
+                disabled={isLoading || isVerifying}
+                className={className ? `${className} ${disabledClass}` : `${baseClass} ${disabledClass}`}
+            >
+                {isLoading || isVerifying ? (
+                    <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        {isVerifying ? 'Verifying...' : 'Opening...'}
+                    </>
+                ) : (
+                    label ?? 'Buy Now'
+                )}
+            </button>
+            <CheckoutModal
+                open={checkoutOpen}
+                onClose={() => setCheckoutOpen(false)}
+                productName={productName || (itemType === 'bundle' ? 'Bundle' : 'Course')}
+                itemId={courseId}
+                listPrice={amount}
+                currency={currency}
+                applied={coupon}
+                onApplied={setCoupon}
+                paying={isLoading}
+                couponError={couponError}
+                onCouponError={setCouponError}
+                onPay={handlePayment}
+            />
+        </>
     );
 }
