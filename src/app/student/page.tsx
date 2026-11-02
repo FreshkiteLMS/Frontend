@@ -17,32 +17,29 @@ function StudentPageContent() {
         const checkEnrollment = async () => {
             const hasPaymentSuccess = searchParams.get('success') === 'true';
 
-            try {
-                // Always fetch the latest stats to ensure the dashboard has data
-                const stats = await studentService.getDashboardStats();
-
-                if (hasPaymentSuccess) {
-                    // Just paid — let them in even if DB hasn't reflected it yet
-                    setIsAuthorized(true);
-                } else if (stats.enrolledCourses > 0) {
-                    setIsAuthorized(true);
-                } else {
-                    router.push('/student/courses');
-                    return;
-                }
-
-            } catch (error) {
-                console.error('Failed to check enrollment status:', error);
-
-                if (hasPaymentSuccess) {
-                    // If they just paid but stats failed, still let them in to see the success message
-                    setIsAuthorized(true);
-                } else {
-                    router.push('/student/courses');
-                    return;
-                }
-            } finally {
+            if (hasPaymentSuccess) {
+                // Just paid — let them in even if access hasn't been granted yet.
+                setIsAuthorized(true);
                 setLoading(false);
+                return;
+            }
+
+            // Enrolled courses OR any resolved access (bundle / full access) — the
+            // same resolver the catalogue uses for "Continue learning", so the
+            // catalogue can never send a student here only to be sent back.
+            const [stats, access] = await Promise.allSettled([
+                studentService.getDashboardStats(),
+                studentService.getMyAccess(),
+            ]);
+            const enrolled = stats.status === 'fulfilled' && stats.value.enrolledCourses > 0;
+            const hasAccess = access.status === 'fulfilled' && (access.value.fullAccess || access.value.courses.length > 0);
+            if (stats.status === 'rejected') console.error('Failed to check enrollment status:', stats.reason);
+
+            if (enrolled || hasAccess) {
+                setIsAuthorized(true);
+                setLoading(false);
+            } else {
+                router.replace('/student/courses');
             }
         };
 

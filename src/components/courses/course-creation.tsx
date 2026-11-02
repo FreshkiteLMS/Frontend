@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { courseService } from '@/services/api/course.api';
 import { courseGroupService } from '@/services/api/courseGroupService';
 import { problemCourseService } from '@/services/api/problem-course.api';
+import { TemplateDownload, WorkbookPicker, WorkbookPreviewView } from '@/components/admin/problem-solving/WorkbookImportCard';
 import type { PreviewResult } from '@/types/problem-course';
 import type { StructuredCourse } from '@/types/structured-course';
 import { isValidDocumentUrl, normalizeDocumentUrlInput } from '@/lib/document-url';
@@ -93,6 +94,9 @@ export function CourseCreation() {
     const [sheetUrl, setSheetUrl] = useState('');
     const [sheetPreview, setSheetPreview] = useState<PreviewResult | null>(null);
     const [processingSheet, setProcessingSheet] = useState(false);
+    // Problem-solving source: a linked Google Sheet or an uploaded Excel workbook.
+    const [problemSource, setProblemSource] = useState<'sheet' | 'excel'>('sheet');
+    const [workbookFile, setWorkbookFile] = useState<File | null>(null);
     const [groups, setGroups] = useState<any[]>([]);
     const searchParams = useSearchParams();
     const editId = searchParams.get('id');
@@ -124,10 +128,16 @@ export function CourseCreation() {
                     // results so the Content step has data without re-processing.
                     if (course.template_type === 'problem-solving') {
                         setSheetUrl(course.problem_sheet?.url || '');
+                        // Courses imported from an uploaded workbook default to the Excel source.
+                        if (!course.problem_sheet?.url && course.problem_upload) setProblemSource('excel');
                         const secs = (course.problem_sections || []) as Array<{ title: string; icon: string; problems?: unknown[] }>;
                         setSheetPreview({
+                            format: 'legacy',
+                            errors: [],
+                            hasVideoSheet: false,
+                            problems: [],
                             spreadsheetId: course.problem_sheet?.spreadsheet_id || '',
-                            warnings: course.problem_sheet?.last_warnings || [],
+                            warnings: course.problem_sheet?.last_warnings || course.problem_upload?.last_warnings || [],
                             stats: {
                                 sectionCount: secs.length,
                                 problemCount: secs.reduce((n, s) => n + (s.problems?.length || 0), 0),
@@ -228,9 +238,27 @@ export function CourseCreation() {
                 price: Number(courseData.price) || 0,
                 thumbnail_url: courseData.thumbnail_url,
             });
-            // Re-read the (possibly changed) sheet; preserves student progress.
-            await problemCourseService.sync(createdCourseId, sheetUrl || undefined);
+            // Re-read the (possibly changed) source; preserves student progress.
+            if (problemSource === 'excel') {
+                if (workbookFile) await problemCourseService.syncWorkbook(createdCourseId, workbookFile);
+            } else {
+                await problemCourseService.sync(createdCourseId, sheetUrl || undefined);
+            }
             return createdCourseId;
+        }
+
+        if (problemSource === 'excel') {
+            if (!workbookFile) return null;
+            const res = await problemCourseService.importWorkbook(workbookFile, {
+                title: courseData.title,
+                description: courseData.description,
+                coverImage: courseData.thumbnail_url || undefined,
+                price: Number(courseData.price) || 0,
+                difficulty: courseData.difficulty,
+                group: courseData.groupId || undefined,
+                publish: false,
+            });
+            return res.course.id || res.course._id || null;
         }
 
         const res = await problemCourseService.import({
@@ -405,6 +433,10 @@ export function CourseCreation() {
     };
 
     const isProblemSolving = selectedTemplate === 'problem-solving';
+    // Ready to save: a valid sheet preview, or a valid workbook (an existing course may just update details).
+    const problemReady = problemSource === 'excel'
+        ? !!workbookFile || !!createdCourseId
+        : !!sheetPreview && sheetPreview.errors.length === 0;
     const isStructuredCourse = selectedTemplate === STRUCTURED_COURSE_TEMPLATE;
     const [questionsImported, setQuestionsImported] = useState(0);
 
@@ -634,8 +666,27 @@ export function CourseCreation() {
             {step === 'content' && (
                 <div>
                     {isProblemSolving ? (
-                    /* Problem-solving: process a Google Sheet and preview the results */
+                    /* Problem-solving: process a Google Sheet or an Excel workbook and preview the results */
                     <div className="mb-6">
+                        <div role="tablist" aria-label="Problem source" className="mb-4 inline-flex rounded-xl border border-gray-200 dark:border-gray-700 p-1 bg-gray-50 dark:bg-gray-800/60">
+                            {([['sheet', 'Google Sheet'], ['excel', 'Upload Excel']] as const).map(([id, label]) => (
+                                <button key={id} type="button" role="tab" aria-selected={problemSource === id} onClick={() => setProblemSource(id)}
+                                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${problemSource === id ? 'bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}`}>
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        {problemSource === 'excel' ? (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Import from an Excel workbook</h3>
+                                <TemplateDownload />
+                                <WorkbookPicker onReady={file => setWorkbookFile(file)} />
+                                {createdCourseId && !workbookFile && (
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Choose a file only if you want to re-import problems; otherwise saving updates the course details.</p>
+                                )}
+                            </div>
+                        ) : (
+                        <>
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Import from Google Sheet</h3>
 
                         <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl p-6">
@@ -676,7 +727,8 @@ export function CourseCreation() {
                         </div>
 
                         {/* Parsed results */}
-                        {sheetPreview && (
+                        {sheetPreview && sheetPreview.errors.length > 0 && <div className="mt-6"><WorkbookPreviewView preview={sheetPreview} /></div>}
+                        {sheetPreview && sheetPreview.errors.length === 0 && (
                             <div className="mt-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
                                 <div className="flex items-center justify-between mb-4">
                                     <h4 className="font-semibold text-gray-900 dark:text-white">Parsed Results</h4>
@@ -714,6 +766,8 @@ export function CourseCreation() {
                                     Looks good? Click <strong>Save &amp; Continue to Preview</strong> below to create the course, then Publish.
                                 </p>
                             </div>
+                        )}
+                        </>
                         )}
                     </div>
                     ) : (
@@ -857,7 +911,7 @@ export function CourseCreation() {
                         </button>
                         <button
                             onClick={handleSaveDraft}
-                            disabled={isSaving || (isProblemSolving && !sheetPreview)}
+                            disabled={isSaving || (isProblemSolving && !problemReady)}
                             className="flex items-center gap-2 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <Save className="w-5 h-5" />
@@ -865,7 +919,7 @@ export function CourseCreation() {
                         </button>
                         <button
                             onClick={handleSaveAndPreview}
-                            disabled={isSaving || (isProblemSolving && !sheetPreview)}
+                            disabled={isSaving || (isProblemSolving && !problemReady)}
                             className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg flex-1 justify-center transition-colors disabled:cursor-not-allowed"
                         >
                             <Eye className="w-5 h-5" />

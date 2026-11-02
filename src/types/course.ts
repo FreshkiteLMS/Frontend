@@ -49,6 +49,8 @@ export interface Course {
     // Problem-solving template only (present when template_type === 'problem-solving').
     problem_sections?: Array<{ id: string; title: string; icon: string; problems: unknown[] }>;
     problem_sheet?: { url: string; spreadsheet_id: string; last_synced_at?: string; last_warnings?: string[] };
+    /** Set when the problems were imported from an uploaded Excel workbook. */
+    problem_upload?: { file_name: string; last_imported_at?: string; last_warnings?: string[] };
 }
 
 export interface CourseEntry {

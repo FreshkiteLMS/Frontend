@@ -5,10 +5,12 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/components/layout/theme-provider';
 import { useState, useEffect } from 'react';
-import { Sun, Moon, Settings, LogOut } from 'lucide-react';
+import { Sun, Moon, Settings, LogOut, LayoutDashboard } from 'lucide-react';
+import { useCourseAccess } from '@/hooks/use-course-access';
 
 export function SellingNavbar() {
     const { user, logout } = useAuth();
+    const access = useCourseAccess();
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -16,6 +18,9 @@ export function SellingNavbar() {
     }, []);
 
     const displayUser = mounted ? user : null;
+    // A way back to the workspace for anyone who has one (students: once they own something).
+    const dashboardHref = displayUser?.role === 'admin' ? '/admin' : '/student';
+    const showDashboard = !!displayUser && (displayUser.role !== 'student' || access.hasAnyAccess);
 
     return (
         <nav className="bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 transition-colors duration-200 sticky top-0 z-50 h-16">
@@ -27,6 +32,15 @@ export function SellingNavbar() {
                     <span className="text-gray-900 dark:text-white font-black text-xl tracking-tight">Freshkite</span>
                 </Link>
                 <div className="flex items-center gap-3">
+                    {showDashboard && (
+                        <Link
+                            href={dashboardHref}
+                            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+                        >
+                            <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+                            <span className="hidden sm:inline">My dashboard</span>
+                        </Link>
+                    )}
                     <ThemeToggle />
                     {displayUser && <ProfileDropdown user={displayUser} logout={logout} />}
                 </div>
@@ -87,7 +101,7 @@ function ProfileDropdown({ user, logout }: { user: any, logout: () => void }) {
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
                     </div>
                     <div className="py-2">
-                        <Link href="/student" className="flex items-center gap-3 px-5 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <Link href="/settings" className="flex items-center gap-3 px-5 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                             <Settings className="w-4 h-4" />
                             Account Settings
                         </Link>

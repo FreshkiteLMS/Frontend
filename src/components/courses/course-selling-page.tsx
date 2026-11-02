@@ -126,7 +126,7 @@ function BundleCard({ group, isExpanded, isOwned, accessReady, onToggle, request
                     </div>
                     {isOwned ? (
                         <Link
-                            href="/student/courses"
+                            href="/student"
                             className="w-full flex items-center justify-center gap-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 font-bold text-sm py-2.5 rounded-xl border border-green-200 dark:border-green-800 transition-colors"
                         >
                             <Check className="w-4 h-4" aria-hidden="true" /> Enrolled · Continue learning
@@ -355,7 +355,7 @@ export function CourseSellingPage() {
                                             <ShieldCheck className="w-4 h-4" aria-hidden="true" /> You have full access to every course
                                         </span>
                                         <Link
-                                            href="/student/courses"
+                                            href="/student"
                                             className="bg-white text-blue-700 hover:bg-blue-50 font-black px-8 py-3.5 rounded-xl text-sm transition-all shadow-xl shadow-blue-900/30 flex items-center justify-center gap-2 whitespace-nowrap"
                                         >
                                             Continue learning

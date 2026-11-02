@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
-import type { TrackerSection, ProblemStatus } from '@/types/problem-course';
+import type { TrackerSection, ProblemStatus, OpenProblemHandler } from '@/types/problem-course';
 import { getSectionIcon } from './sectionIcons';
 import { sectionStats } from './stats';
 import { ProblemList } from './ProblemList';
@@ -12,9 +12,10 @@ interface SectionCardProps {
     onToggle: (sectionId: string) => void;
     busyId: string | null;
     onStatusChange: (problemId: string, status: ProblemStatus) => void;
+    onOpen?: OpenProblemHandler;
 }
 
-function SectionCardInner({ section, expanded, onToggle, busyId, onStatusChange }: SectionCardProps) {
+function SectionCardInner({ section, expanded, onToggle, busyId, onStatusChange, onOpen }: SectionCardProps) {
     const Icon = getSectionIcon(section.icon);
     const stats = useMemo(() => sectionStats(section), [section]);
     const complete = stats.total > 0 && stats.solved === stats.total;
@@ -85,7 +86,7 @@ function SectionCardInner({ section, expanded, onToggle, busyId, onStatusChange 
                         transition={{ duration: 0.25, ease: 'easeInOut' }}
                         className="overflow-hidden border-t border-gray-100 dark:border-slate-800"
                     >
-                        <ProblemList problems={section.problems} busyId={busyId} onStatusChange={onStatusChange} />
+                        <ProblemList problems={section.problems} busyId={busyId} onStatusChange={onStatusChange} onOpen={onOpen} />
                     </motion.div>
                 )}
             </AnimatePresence>

@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, AlertCircle, RefreshCw, SearchX, ListChecks } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { problemCourseService } from '@/services/api/problem-course.api';
-import type { ProblemCourse, TrackerSection, ProblemStatus } from '@/types/problem-course';
+import type { ProblemCourse, TrackerSection, ProblemStatus, ProblemPanelTab, OpenProblemHandler } from '@/types/problem-course';
 import { computeStats, filterSections, isSolved, type DifficultyFilter, type StatusFilter } from './stats';
 import { StatsDashboard } from './StatsDashboard';
 import { SearchFilterBar } from './SearchFilterBar';
 import { SectionCard } from './SectionCard';
+import { ProblemDetailPanel } from './ProblemDetailPanel';
 
 const expandedKey = (courseId: string) => `pt-expanded-${courseId}`;
 
@@ -138,6 +139,32 @@ export function ProblemTracker({ courseId }: ProblemTrackerProps) {
         [courseId]
     );
 
+    // ── Problem panel (statement, videos, logic assessment) ──
+    // Selection lives in the URL (?problem=&tab=) so a refresh or shared link
+    // reopens it; history.replaceState avoids reloading the page.
+    const [openProblem, setOpenProblem] = useState<{ id: string; tab: ProblemPanelTab } | null>(null);
+    const writeSelection = useCallback((sel: { id: string; tab: ProblemPanelTab } | null) => {
+        setOpenProblem(sel);
+        try {
+            const url = new URL(window.location.href);
+            if (sel) { url.searchParams.set('problem', sel.id); url.searchParams.set('tab', sel.tab); }
+            else { url.searchParams.delete('problem'); url.searchParams.delete('tab'); }
+            window.history.replaceState(window.history.state, '', url.toString());
+        } catch { /* non-browser */ }
+    }, []);
+    useEffect(() => {
+        if (!course) return;
+        const params = new URLSearchParams(window.location.search);
+        const id = params.get('problem');
+        const tab = params.get('tab') as ProblemPanelTab | null;
+        if (id && course.sections.some(s => s.problems.some(p => p.id === id))) {
+            setOpenProblem({ id, tab: tab && ['problem', 'video', 'explain'].includes(tab) ? tab : 'problem' });
+        }
+    }, [course]);
+    const handleOpen = useCallback<OpenProblemHandler>((problem, tab) => {
+        writeSelection({ id: problem.id, tab: tab ?? (problem.hasStatement ? 'problem' : (problem.videoLanguages?.length ? 'video' : 'explain')) });
+    }, [writeSelection]);
+
     // ── Derived (memoized) ──
     const stats = useMemo(() => computeStats(course?.sections ?? []), [course?.sections]);
 
@@ -154,6 +181,12 @@ export function ProblemTracker({ courseId }: ProblemTrackerProps) {
         () => (filtersActive ? new Set(visibleSections.map(s => s.id)) : expanded),
         [filtersActive, visibleSections, expanded]
     );
+
+    // Previous/next step through the problems currently shown (filters respected).
+    const navList = useMemo(() => visibleSections.flatMap(s => s.problems), [visibleSections]);
+    const allProblems = useMemo(() => (course?.sections ?? []).flatMap(s => s.problems), [course?.sections]);
+    const selected = openProblem ? allProblems.find(p => p.id === openProblem.id) ?? null : null;
+    const navIndex = selected ? navList.findIndex(p => p.id === selected.id) : -1;
 
     // ── Render states ──
     if (loading) return <TrackerSkeleton />;
@@ -215,11 +248,23 @@ export function ProblemTracker({ courseId }: ProblemTrackerProps) {
                                 onToggle={toggleSection}
                                 busyId={busyId}
                                 onStatusChange={handleStatusChange}
+                                onOpen={handleOpen}
                             />
                         ))
                     )}
                 </div>
             </div>
+            {selected && openProblem && (
+                <ProblemDetailPanel
+                    courseId={courseId}
+                    problem={selected}
+                    tab={openProblem.tab}
+                    onTabChange={tab => writeSelection({ id: selected.id, tab })}
+                    onClose={() => writeSelection(null)}
+                    onPrev={navIndex > 0 ? () => writeSelection({ id: navList[navIndex - 1].id, tab: openProblem.tab }) : null}
+                    onNext={navIndex >= 0 && navIndex < navList.length - 1 ? () => writeSelection({ id: navList[navIndex + 1].id, tab: openProblem.tab }) : null}
+                />
+            )}
         </div>
     );
 }

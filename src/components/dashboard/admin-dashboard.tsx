@@ -20,7 +20,8 @@ import {
     ListChecks,
     AlertTriangle,
     IndianRupee,
-    TicketPercent
+    TicketPercent,
+    Mic
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
@@ -344,6 +345,13 @@ export function AdminDashboard() {
             description: 'Coupons for courses, bundles & Master Plan',
             color: 'bg-violet-500',
             action: () => handleNavigate('/admin/discounts')
+        },
+        {
+            icon: Mic,
+            label: 'Attempt Requests',
+            description: 'Audio assessment attempt limits',
+            color: 'bg-teal-500',
+            action: () => handleNavigate('/admin/assessment-attempts')
         }
     ];
 
@@ -439,7 +447,7 @@ export function AdminDashboard() {
             {/* Quick Actions */}
             <div className="mb-8">
                 <h3 className="text-gray-900 dark:text-white text-lg font-semibold mb-4">Quick Actions</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {quickActions.map((action) => (
                         <button
                             key={action.label}

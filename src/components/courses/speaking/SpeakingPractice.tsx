@@ -11,6 +11,7 @@ import { ATTEMPT_STATUS_LABELS, CONSENT_STORAGE_KEY, formatRelative, formatScore
 import { AudioRecorder } from './AudioRecorder';
 import type { Recording } from './useAudioRecorder';
 import { AssessmentReport, PerformanceBadge } from './AssessmentReport';
+import { AttemptAllowanceBanner } from '@/components/assessments/AttemptAllowanceBanner';
 
 const POLL_MS = [1500, 2000, 3000, 5000];
 const PROCESSING_STEPS: { status: SpeakingAttempt['status'][]; label: string }[] = [
@@ -28,7 +29,7 @@ function writeConsent(version: string) {
 }
 
 /** Live processing state for an attempt, with a step indicator. */
-function ProcessingCard({ attempt, onRetry, retrying }: { attempt: SpeakingAttempt; onRetry: () => void; retrying: boolean }) {
+export function ProcessingCard({ attempt, onRetry, retrying }: { attempt: SpeakingAttempt; onRetry: () => void; retrying: boolean }) {
     if (attempt.status === 'FAILED') {
         return (
             <div role="alert" className="rounded-2xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-900/20 p-4 sm:p-5">
@@ -237,6 +238,11 @@ export function SpeakingPractice({ courseId, question, onBack, onChanged, readOn
                 const id = apiErrorDetails<{ attemptId?: string }>(err)?.attemptId;
                 toast(apiErrorMessage(err, 'Your previous answer is still being assessed.'), { icon: 'ℹ️' });
                 if (id) setActive(await speakingService.attempt(courseId, id).catch(() => null));
+            } else if (code === 'ATTEMPT_LIMIT_REACHED') {
+                // Out of attempts (possibly used up in another tab): show the request option.
+                pendingRef.current = null;
+                toast.error(apiErrorMessage(err, 'You have used all your attempts for this question.'));
+                void loadHistory();
             } else if (code && ['UNSUPPORTED_AUDIO_FORMAT', 'AUDIO_TYPE_MISMATCH', 'RECORDING_EMPTY', 'RECORDING_TOO_LARGE', 'RECORDING_TOO_LONG', 'RECORDING_TOO_SHORT', 'ATTEMPT_CLOSED'].includes(code)) {
                 // The server rejected this recording for good — a new one is needed.
                 pendingRef.current = null;
@@ -331,6 +337,12 @@ export function SpeakingPractice({ courseId, question, onBack, onChanged, readOn
 
             {!readOnly && settings && (
                 <>
+                    <AttemptAllowanceBanner
+                        allowance={history?.allowance}
+                        item={{ kind: 'COURSE_QUESTION', courseId, itemId: question.id }}
+                        itemTitle={question.title}
+                        onRequested={() => void loadHistory()}
+                    />
                     {!consent && (
                         <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm">
                             <p className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white"><ShieldCheck className="h-4 w-4 text-emerald-600" aria-hidden="true" />How your recording is used</p>
@@ -350,8 +362,8 @@ export function SpeakingPractice({ courseId, question, onBack, onChanged, readOn
                         minSeconds={settings.minRecordingSeconds}
                         submitting={submitting}
                         uploadProgress={uploadProgress}
-                        disabled={busy || !consent}
-                        disabledReason={busy ? 'Wait for your current answer to be assessed before recording another.' : !consent ? 'Confirm the AI processing notice above to submit a recording.' : undefined}
+                        disabled={busy || !consent || !!history?.allowance?.limitReached}
+                        disabledReason={history?.allowance?.limitReached ? 'You have used all your attempts for this question.' : busy ? 'Wait for your current answer to be assessed before recording another.' : !consent ? 'Confirm the AI processing notice above to submit a recording.' : undefined}
                         onSubmit={submit}
                         onDirtyChange={setDirty}
                     />

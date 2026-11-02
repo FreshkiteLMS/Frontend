@@ -1,3 +1,5 @@
+import type { AttemptAllowance } from './assessment-attempts';
+
 /**
  * AI speaking assessment — mirrors Backend/docs/speaking-assessment.md.
  * Recordings are never retained, so no type here carries audio or a URL to it.
@@ -123,6 +125,8 @@ export interface QuestionHistory {
     stats: AttemptStats;
     activeAttemptId: string | null;
     settings: SpeakingSettings | null;
+    /** Attempt limit for this question (null for non-audio questions). */
+    allowance?: AttemptAllowance | null;
     scoreHistory: { attemptNumber: number; score: number; completedAt: string }[];
 }
 

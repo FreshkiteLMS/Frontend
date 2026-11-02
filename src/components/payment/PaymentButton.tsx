@@ -142,7 +142,7 @@ export default function PaymentButton({ amount, currency, courseId, itemType, pr
                 setCheckoutOpen(false);
                 toast.success('You already have access — no payment needed.');
                 await refreshCourseAccess();
-                router.push('/student/courses');
+                router.push('/student');
                 return;
             }
             // The coupon stopped being valid between "Apply" and "Pay" (expired,

@@ -27,6 +27,7 @@ import {
     ChevronDown,
     Package,
     TicketPercent,
+    Mic,
     type LucideIcon,
 } from 'lucide-react';
 import { notificationService, Notification } from '@/services/api/notification.api';
@@ -49,6 +50,7 @@ const ADMIN_NAV: NavItem[] = [
     { href: '/admin/batches', label: 'Batches', icon: Layers },
     { href: '/admin/bundles', label: 'Bundles', icon: Package },
     { href: '/admin/discounts', label: 'Discounts', icon: TicketPercent },
+    { href: '/admin/assessment-attempts', label: 'Attempts', icon: Mic },
     { href: '/admin/enrollment-requests', label: 'Requests', icon: ClipboardCheck },
     { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
 ];

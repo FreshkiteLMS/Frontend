@@ -82,8 +82,9 @@ describe('CourseSellingPage access state', () => {
         expect(await screen.findByText('You have full access to every course')).toBeTruthy();
         expect(screen.queryByRole('button', { name: /Get Full Access/ })).toBeNull();
         expect(screen.queryByRole('button', { name: /Request Admin Approval/ })).toBeNull();
-        // Hero and the bundle card both lead to the student's courses.
+        // Hero and the bundle card both lead out of the catalogue to the student's dashboard.
         await waitFor(() => expect(screen.getAllByRole('link', { name: /Continue learning/ }).length).toBe(2));
+        for (const link of screen.getAllByRole('link', { name: /Continue learning/ })) expect(link.getAttribute('href')).toBe('/student');
         expect(screen.queryByRole('button', { name: 'Enroll in Bundle' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Enroll Now' })).toBeNull();
     });

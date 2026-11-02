@@ -1,6 +1,6 @@
 import { memo } from 'react';
-import { CheckCircle2, XCircle, CircleDot, Circle, BookOpen, Youtube, Code2 } from 'lucide-react';
-import type { TrackerProblem, ProblemStatus } from '@/types/problem-course';
+import { CheckCircle2, XCircle, CircleDot, Circle, BookOpen, Youtube, Code2, Mic } from 'lucide-react';
+import type { TrackerProblem, ProblemStatus, OpenProblemHandler } from '@/types/problem-course';
 import { DifficultyBadge } from './DifficultyBadge';
 import { StatusDropdown } from './StatusDropdown';
 
@@ -26,9 +26,11 @@ interface ProblemRowProps {
     problem: TrackerProblem;
     busy?: boolean;
     onStatusChange: (problemId: string, status: ProblemStatus) => void;
+    /** Open the problem panel (statement, videos, logic assessment). */
+    onOpen?: OpenProblemHandler;
 }
 
-function ProblemRowInner({ problem, busy, onStatusChange }: ProblemRowProps) {
+function ProblemRowInner({ problem, busy, onStatusChange, onOpen }: ProblemRowProps) {
     const { title, difficulty, solutionUrl, videoUrl, problemUrl, tags, externalId, userStatus } = problem;
 
     return (
@@ -50,9 +52,25 @@ function ProblemRowInner({ problem, busy, onStatusChange }: ProblemRowProps) {
 
             {/* title + tags */}
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100" title={title}>
-                    {title}
-                </p>
+                {onOpen ? (
+                    <button
+                        type="button"
+                        onClick={() => onOpen(problem)}
+                        title={`Open ${title}: problem, video solutions and AI logic assessment`}
+                        className="flex max-w-full items-center gap-2 truncate text-left text-sm font-medium text-gray-900 hover:text-blue-600 focus:outline-none focus-visible:underline dark:text-slate-100 dark:hover:text-blue-400"
+                    >
+                        <span className="truncate">{title}</span>
+                        {(problem.videoLanguages?.length ?? 0) > 1 && (
+                            <span className="hidden flex-shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 sm:inline dark:bg-red-500/10 dark:text-red-400" title={`Video solutions in ${problem.videoLanguages!.join(', ')}`}>
+                                {problem.videoLanguages!.length} langs
+                            </span>
+                        )}
+                    </button>
+                ) : (
+                    <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100" title={title}>
+                        {title}
+                    </p>
+                )}
                 {tags.length > 0 && (
                     <div className="mt-0.5 hidden items-center gap-1 lg:flex">
                         {tags.slice(0, 3).map(tag => (
@@ -80,6 +98,18 @@ function ProblemRowInner({ problem, busy, onStatusChange }: ProblemRowProps) {
 
             {/* actions */}
             <div className="flex flex-shrink-0 items-center gap-1">
+                {onOpen && (
+                    <button
+                        type="button"
+                        onClick={() => onOpen(problem, 'explain')}
+                        title="Explain your approach: record your answer for AI feedback"
+                        aria-label={`Explain your approach for ${title}`}
+                        className="flex h-9 flex-shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/40 px-2.5 text-xs font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
+                    >
+                        <Mic className="h-4 w-4" aria-hidden="true" />
+                        <span className="hidden md:inline">Explain</span>
+                    </button>
+                )}
                 <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center">
                     {solutionUrl && (
                         <a
@@ -94,7 +124,17 @@ function ProblemRowInner({ problem, busy, onStatusChange }: ProblemRowProps) {
                     )}
                 </span>
                 <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center">
-                    {videoUrl && (
+                    {onOpen && (problem.videoLanguages?.length ?? 0) > 0 ? (
+                        <button
+                            type="button"
+                            onClick={() => onOpen(problem, 'video')}
+                            title={`Watch the video solution (${problem.videoLanguages!.join(', ')})`}
+                            aria-label={`Watch the video solution for ${title}`}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-500/10 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-500/15 dark:hover:text-red-400"
+                        >
+                            <Youtube className="h-4 w-4" />
+                        </button>
+                    ) : videoUrl && (
                         <a
                             href={videoUrl}
                             target="_blank"
@@ -134,5 +174,5 @@ function ProblemRowInner({ problem, busy, onStatusChange }: ProblemRowProps) {
 
 // Re-render only when the problem's identity/status or busy flag changes.
 export const ProblemRow = memo(ProblemRowInner, (prev, next) =>
-    prev.problem === next.problem && prev.busy === next.busy && prev.onStatusChange === next.onStatusChange
+    prev.problem === next.problem && prev.busy === next.busy && prev.onStatusChange === next.onStatusChange && prev.onOpen === next.onOpen
 );

@@ -2,9 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { RefreshCw, ExternalLink, Eye, AlertTriangle, Layers, ListChecks, Clock } from 'lucide-react';
+import { RefreshCw, ExternalLink, Eye, AlertTriangle, Layers, ListChecks, Clock, Mic, PlayCircle, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { problemCourseService } from '@/services/api/problem-course.api';
+import { ProblemsAdminTab } from '@/components/admin/problem-solving/ProblemsAdminTab';
+import { LogicAssessmentsTab } from '@/components/admin/problem-solving/LogicAssessmentsTab';
+import { TemplateDownload, WorkbookPicker } from '@/components/admin/problem-solving/WorkbookImportCard';
 
 interface RawSection {
     id: string;
@@ -40,6 +43,47 @@ export function ProblemCourseManagePanel({
     const [warnings, setWarnings] = useState<string[]>([]);
 
     const totalProblems = sections.reduce((n, s) => n + (s.problems?.length || 0), 0);
+    const [tab, setTab] = useState<'overview' | 'problems' | 'logic'>('overview');
+    const [workbook, setWorkbook] = useState<File | null>(null);
+    const [pickerKey, setPickerKey] = useState(0);
+    const [applying, setApplying] = useState(false);
+
+    const applyWorkbook = async () => {
+        if (!workbook) return;
+        setApplying(true);
+        try {
+            const res = await problemCourseService.syncWorkbook(courseId, workbook);
+            const updated = (res.course as any)?.problem_sections as RawSection[] | undefined;
+            if (updated) setSections(updated);
+            setWarnings(res.warnings || []);
+            toast.success(`Imported — ${res.summary.added} added, ${res.summary.removed} removed, ${res.summary.total} total problems`);
+            setWorkbook(null);
+            setPickerKey(k => k + 1);
+        } catch (err: any) {
+            toast.error(err?.response?.data?.error?.message || err?.message || 'Failed to import the workbook');
+        } finally {
+            setApplying(false);
+        }
+    };
+
+    const tabs = [
+        { id: 'overview' as const, label: 'Overview', Icon: Layers },
+        { id: 'problems' as const, label: 'Problems & videos', Icon: PlayCircle },
+        { id: 'logic' as const, label: 'Logic Assessments', Icon: Mic },
+    ];
+    const tabBar = (
+        <div role="tablist" aria-label="Problem course management" className="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-700">
+            {tabs.map(({ id, label, Icon }) => (
+                <button key={id} role="tab" type="button" aria-selected={tab === id} onClick={() => setTab(id)}
+                    className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors ${tab === id ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}`}>
+                    <Icon className="h-4 w-4" aria-hidden="true" />{label}
+                </button>
+            ))}
+        </div>
+    );
+
+    if (tab === 'problems') return <div className="space-y-6">{tabBar}<ProblemsAdminTab courseId={courseId} /></div>;
+    if (tab === 'logic') return <div className="space-y-6">{tabBar}<LogicAssessmentsTab courseId={courseId} sections={sections.map(s => ({ id: s.id, title: s.title }))} /></div>;
 
     const handleSync = async () => {
         setSyncing(true);
@@ -63,6 +107,7 @@ export function ProblemCourseManagePanel({
 
     return (
         <div className="space-y-6">
+            {tabBar}
             {/* Summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
@@ -92,10 +137,11 @@ export function ProblemCourseManagePanel({
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                     <div>
-                        <h4 className="font-semibold text-gray-900 dark:text-white">Google Sheet</h4>
+                        <h4 className="font-semibold text-gray-900 dark:text-white">{sheetUrl ? 'Google Sheet' : 'Uploaded workbook'}</h4>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Re-read the sheet to pull in new problems and edited links. Student progress is always
-                            preserved.
+                            {sheetUrl
+                                ? 'Re-read the sheet to pull in new problems and edited links. Student progress is always preserved.'
+                                : 'This course was imported from an Excel file. Upload a new version below to update it.'}
                         </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -117,14 +163,16 @@ export function ProblemCourseManagePanel({
                             <Eye className="w-4 h-4" />
                             View Tracker
                         </button>
-                        <button
-                            onClick={handleSync}
-                            disabled={syncing}
-                            className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors text-sm font-semibold disabled:cursor-not-allowed"
-                        >
-                            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                            {syncing ? 'Syncing…' : 'Sync Sheet'}
-                        </button>
+                        {sheetUrl && (
+                            <button
+                                onClick={handleSync}
+                                disabled={syncing}
+                                className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors text-sm font-semibold disabled:cursor-not-allowed"
+                            >
+                                <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                                {syncing ? 'Syncing…' : 'Sync Sheet'}
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -143,6 +191,28 @@ export function ProblemCourseManagePanel({
                         </ul>
                     </div>
                 )}
+            </div>
+
+            {/* Excel workbook re-import */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 space-y-4">
+                <div>
+                    <h4 className="font-semibold text-gray-900 dark:text-white">Import from Excel</h4>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Upload a workbook to add or update problems, statements and multilingual videos. Student progress is preserved;
+                        nothing is imported if any row has an error.
+                    </p>
+                </div>
+                <TemplateDownload />
+                <WorkbookPicker key={pickerKey} onReady={file => setWorkbook(file)} disabled={applying} />
+                <button
+                    type="button"
+                    onClick={applyWorkbook}
+                    disabled={!workbook || applying}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {applying ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Upload className="h-4 w-4" aria-hidden="true" />}
+                    {applying ? 'Importing…' : 'Import into this course'}
+                </button>
             </div>
 
             {/* Section breakdown */}
