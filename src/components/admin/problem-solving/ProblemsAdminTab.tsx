@@ -6,7 +6,7 @@ import { FileText, Loader2, Pencil, Plus, Search } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { problemCourseService } from '@/services/api/problem-course.api';
 import { apiErrorMessage, apiFieldErrors } from '@/services/api/discount.api';
-import { VIDEO_LANGUAGES, OTHER_LANGUAGE } from '@/lib/video-solutions';
+import { VIDEO_LANGUAGES, OTHER_LANGUAGE, UNSPECIFIED_LANGUAGE } from '@/lib/video-solutions';
 import type { AdminProblemSection, ProblemStatement, VideoSolution } from '@/types/problem-course';
 import { VideoSolutionsEditor, newVideoDraft, validateVideoDrafts, languageNameOf, type VideoDraft } from './VideoSolutionsEditor';
 
@@ -14,10 +14,10 @@ type AdminProblem = AdminProblemSection['problems'][number];
 const EMPTY: ProblemStatement = { description: '', constraints: '', examples: [], solution_approach: '', time_complexity: '', space_complexity: '' };
 
 const toDraft = (v: VideoSolution): VideoDraft => {
-    const known = VIDEO_LANGUAGES.some(l => l.code === v.languageCode);
+    const known = v.languageCode === UNSPECIFIED_LANGUAGE || VIDEO_LANGUAGES.some(l => l.code === v.languageCode);
     return newVideoDraft({
         id: v.id, title: v.title, language: known ? v.languageCode : OTHER_LANGUAGE, customName: known ? '' : v.languageName,
-        url: v.url, description: v.description, isDefault: v.isDefault, status: v.status ?? 'published',
+        url: v.url, description: v.description, isDefault: v.isDefault, status: v.status ?? 'published', videoType: v.videoType ?? 'solution',
     });
 };
 
@@ -55,6 +55,7 @@ function ProblemEditor({ courseId, problem, onClose, onSaved }: { courseId: stri
                     description: v.description.trim(),
                     isDefault: v.isDefault,
                     status: v.status,
+                    videoType: v.videoType,
                 })),
             });
             toast.success('Problem saved');
@@ -65,7 +66,7 @@ function ProblemEditor({ courseId, problem, onClose, onSaved }: { courseId: stri
             const mapped: Record<string, string> = {};
             for (const [path, msg] of Object.entries(fields)) {
                 const m = /^videoSolutions\[(\d+)\]\.(\w+)$/.exec(path);
-                if (m && videos[Number(m[1])]) mapped[`${videos[Number(m[1])].key}.${m[2] === 'is_default' ? 'isDefault' : m[2]}`] = msg;
+                if (m && videos[Number(m[1])]) mapped[`${videos[Number(m[1])].key}.${m[2] === 'is_default' ? 'isDefault' : m[2] === 'video_type' ? 'videoType' : m[2]}`] = msg;
             }
             setErrors(mapped);
             toast.error(apiErrorMessage(err, 'Could not save the problem.'));

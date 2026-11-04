@@ -176,7 +176,7 @@ export function ProfilePage({ idOrUsername, mode = 'app' }: { idOrUsername: stri
             {self && !isOwnerPreview && (
                 <>
                     <Link href="/settings?section=profile" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold"><Pencil className="w-4 h-4" /> Edit profile</Link>
-                    <PreviewMenu onPick={setPreview} />
+                    <PreviewMenu onPick={setPreview} canPreviewPublic={p.visibility === 'public'} />
                 </>
             )}
             {shareUrl && !isOwnerPreview && (
@@ -320,7 +320,8 @@ export function ProfilePage({ idOrUsername, mode = 'app' }: { idOrUsername: stri
     );
 }
 
-function PreviewMenu({ onPick }: { onPick: (p: ProfilePreview) => void }) {
+/** The public-link view only exists for public profiles; otherwise visitors cannot see the profile at all. */
+function PreviewMenu({ onPick, canPreviewPublic }: { onPick: (p: ProfilePreview) => void; canPreviewPublic: boolean }) {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -337,7 +338,7 @@ function PreviewMenu({ onPick }: { onPick: (p: ProfilePreview) => void }) {
             {open && (
                 <div role="menu" className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl py-1 z-30">
                     <button role="menuitem" onClick={() => { setOpen(false); onPick('student'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">As another student</button>
-                    <button role="menuitem" onClick={() => { setOpen(false); onPick('public'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">As a visitor (public link)</button>
+                    {canPreviewPublic && <button role="menuitem" onClick={() => { setOpen(false); onPick('public'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">As a visitor (public link)</button>}
                 </div>
             )}
         </div>

@@ -11,12 +11,34 @@ import type { ProcessingState, ProcessingStatus, StructuredCourse } from '@/type
 const POLL_INTERVAL_MS = 2500;
 
 const STEPS: { label: string; statuses: ProcessingStatus[] }[] = [
-    { label: 'Queued', statuses: ['uploaded', 'processing'] },
-    { label: 'Reading document', statuses: ['extracting'] },
-    { label: 'Structuring with AI', statuses: ['structuring'] },
-    { label: 'Validating', statuses: ['validating'] },
-    { label: 'Done', statuses: ['completed'] },
+    { label: 'Extracting document', statuses: ['uploaded', 'processing', 'extracting'] },
+    { label: 'Analyzing structure', statuses: ['analyzing'] },
+    { label: 'Processing lesson content', statuses: ['structuring'] },
+    { label: 'Validating links and resources', statuses: ['validating'] },
+    { label: 'Saving course content', statuses: ['saving'] },
+    { label: 'Verifying course structure', statuses: ['verifying'] },
 ];
+
+/** Counts as the server last reported them; a stage that hasn't run yet shows nothing. */
+function ProgressCounts({ state }: { state: ProcessingState }) {
+    if (state.lessons_detected == null || state.modules_detected == null) return null;
+    const items = [
+        { label: 'Modules detected', value: state.modules_detected },
+        { label: 'Lessons detected', value: state.lessons_detected },
+        { label: 'Modules processed', value: `${state.modules_done ?? 0} of ${state.modules_detected}` },
+        { label: 'Lessons processed', value: `${state.lessons_done ?? 0} of ${state.lessons_detected}` },
+    ];
+    return (
+        <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {items.map(item => (
+                <div key={item.label} className="rounded-lg bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900 px-3 py-2">
+                    <dt className="text-[11px] font-medium text-gray-500 dark:text-gray-400">{item.label}</dt>
+                    <dd className="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{item.value}</dd>
+                </div>
+            ))}
+        </dl>
+    );
+}
 
 interface CourseProcessingPanelProps {
     /** Existing course id, or null before the course has been saved. */
@@ -188,21 +210,20 @@ export function CourseProcessingPanel({
                                                 : current ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                                     : <span className="w-3.5 h-3.5 rounded-full border border-current" />}
                                             {step.label}
-                                            {current && step.statuses.includes('structuring') && (state.chunks_total ?? 0) > 1 && (
-                                                <span className="text-gray-500 dark:text-gray-400">
-                                                    ({state.chunks_done ?? 0}/{state.chunks_total} parts)
-                                                </span>
-                                            )}
                                         </li>
                                     );
                                 })}
                             </ol>
+                            <ProgressCounts state={state} />
                             {state.status === 'failed' && state.error && (
                                 <div role="alert" className="mt-4 flex items-start gap-2.5 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3.5">
                                     <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                                     <div className="text-sm">
                                         <p className="font-semibold text-red-800 dark:text-red-300">Processing failed</p>
                                         <p className="text-red-700 dark:text-red-300/90">{state.error.message}</p>
+                                        {(state.lessons_done ?? 0) > 0 && (
+                                            <p className="mt-1 text-red-700/80 dark:text-red-300/70">Lessons already processed are kept: processing this document again continues from there.</p>
+                                        )}
                                         {structured && (
                                             <p className="mt-1 text-red-700/80 dark:text-red-300/70">The previously processed lessons are unchanged.</p>
                                         )}

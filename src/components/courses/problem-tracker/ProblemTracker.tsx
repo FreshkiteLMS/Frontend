@@ -11,6 +11,7 @@ import { StatsDashboard } from './StatsDashboard';
 import { SearchFilterBar } from './SearchFilterBar';
 import { SectionCard } from './SectionCard';
 import { ProblemDetailPanel } from './ProblemDetailPanel';
+import { ProblemVideoModal } from './ProblemVideoModal';
 
 const expandedKey = (courseId: string) => `pt-expanded-${courseId}`;
 
@@ -139,7 +140,7 @@ export function ProblemTracker({ courseId }: ProblemTrackerProps) {
         [courseId]
     );
 
-    // ── Problem panel (statement, videos, logic assessment) ──
+    // ── Problem dialogs: videos, or the statement and logic assessment ──
     // Selection lives in the URL (?problem=&tab=) so a refresh or shared link
     // reopens it; history.replaceState avoids reloading the page.
     const [openProblem, setOpenProblem] = useState<{ id: string; tab: ProblemPanelTab } | null>(null);
@@ -162,7 +163,7 @@ export function ProblemTracker({ courseId }: ProblemTrackerProps) {
         }
     }, [course]);
     const handleOpen = useCallback<OpenProblemHandler>((problem, tab) => {
-        writeSelection({ id: problem.id, tab: tab ?? (problem.hasStatement ? 'problem' : (problem.videoLanguages?.length ? 'video' : 'explain')) });
+        writeSelection({ id: problem.id, tab: tab ?? (problem.hasStatement ? 'problem' : 'explain') });
     }, [writeSelection]);
 
     // ── Derived (memoized) ──
@@ -254,7 +255,10 @@ export function ProblemTracker({ courseId }: ProblemTrackerProps) {
                     )}
                 </div>
             </div>
-            {selected && openProblem && (
+            {selected && openProblem?.tab === 'video' && (
+                <ProblemVideoModal courseId={courseId} problem={selected} onClose={() => writeSelection(null)} />
+            )}
+            {selected && openProblem && openProblem.tab !== 'video' && (
                 <ProblemDetailPanel
                     courseId={courseId}
                     problem={selected}

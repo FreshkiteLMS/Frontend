@@ -19,6 +19,7 @@ import { CodeView } from "../structured/blocks/code";
 import { CalloutView, type CalloutVariant } from "../structured/blocks/callouts";
 import { ImageView, VideoView } from "../structured/blocks/media";
 import { TableView } from "../structured/blocks/table";
+import { LinkedText } from "../structured/blocks/linked-text";
 
 export interface LegacySection {
     id: string;
@@ -196,7 +197,7 @@ function InlineText({ text }: { text: string }) {
     let m: RegExpExecArray | null;
 
     while ((m = regex.exec(text)) !== null) {
-        if (m.index > last) parts.push(text.slice(last, m.index));
+        if (m.index > last) parts.push(<LinkedText key={`t${last}`} text={text.slice(last, m.index)} />);
         const token = m[0];
         if (token.startsWith("**")) {
             parts.push(<strong key={m.index} className="font-semibold text-gray-900 dark:text-gray-100">{token.slice(2, -2)}</strong>);
@@ -223,7 +224,7 @@ function InlineText({ text }: { text: string }) {
         }
         last = m.index + token.length;
     }
-    if (last < text.length) parts.push(text.slice(last));
+    if (last < text.length) parts.push(<LinkedText key={`t${last}`} text={text.slice(last)} />);
     return <>{parts}</>;
 }
 
@@ -305,7 +306,7 @@ const AssignmentList = memo(function AssignmentList({ assignments }: { assignmen
                 {assignments.map((task, i) => (
                     <div key={i} className="flex gap-4 p-5 bg-amber-50 dark:bg-amber-950/15 border border-amber-100 dark:border-amber-800/30 rounded-xl">
                         <span className="flex-shrink-0 w-7 h-7 bg-amber-100 dark:bg-amber-900/50 rounded-lg flex items-center justify-center mt-0.5 text-amber-700 dark:text-amber-400 font-bold text-sm">{i + 1}</span>
-                        <p className="text-[15px] text-gray-800 dark:text-gray-200 leading-relaxed flex-1">{task}</p>
+                        <p className="text-[15px] text-gray-800 dark:text-gray-200 leading-relaxed flex-1"><LinkedText text={task} /></p>
                     </div>
                 ))}
             </div>

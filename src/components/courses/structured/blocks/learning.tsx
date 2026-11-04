@@ -3,6 +3,7 @@
 import { memo, useId, useState } from 'react';
 import { BookMarked, CheckCircle2, ChevronDown, ClipboardList, FlaskConical, HelpCircle, ListChecks } from 'lucide-react';
 import type { BlockOf } from '@/types/structured-course';
+import { LinkedText } from './linked-text';
 
 export const ExampleBlockView = memo(function ExampleBlockView({ block }: { block: BlockOf<'example'> }) {
     return (
@@ -11,7 +12,7 @@ export const ExampleBlockView = memo(function ExampleBlockView({ block }: { bloc
                 <FlaskConical className="w-4 h-4" aria-hidden="true" />
                 {block.title || 'Example'}
             </p>
-            <p className="text-[16px] text-gray-800 dark:text-gray-200 leading-[1.8] whitespace-pre-line">{block.text}</p>
+            <p className="text-[16px] text-gray-800 dark:text-gray-200 leading-[1.8] whitespace-pre-line"><LinkedText text={block.text} /></p>
         </section>
     );
 });
@@ -23,7 +24,7 @@ export const DefinitionBlockView = memo(function DefinitionBlockView({ block }: 
                 <BookMarked className="w-4 h-4 text-teal-600 dark:text-teal-400" aria-hidden="true" />
                 {block.term}
             </dt>
-            <dd className="mt-1.5 text-[16px] text-gray-700 dark:text-gray-300 leading-[1.75] whitespace-pre-line">{block.definition}</dd>
+            <dd className="mt-1.5 text-[16px] text-gray-700 dark:text-gray-300 leading-[1.75] whitespace-pre-line"><LinkedText text={block.definition} /></dd>
         </dl>
     );
 });
@@ -48,7 +49,7 @@ export const ExerciseBlockView = memo(function ExerciseBlockView({ block }: { bl
                     </span>
                 )}
             </header>
-            <p className="text-[16px] text-gray-800 dark:text-gray-200 leading-[1.8] whitespace-pre-line">{block.instructions}</p>
+            <p className="text-[16px] text-gray-800 dark:text-gray-200 leading-[1.8] whitespace-pre-line"><LinkedText text={block.instructions} /></p>
         </section>
     );
 });
@@ -58,7 +59,7 @@ export const QuestionBlockView = memo(function QuestionBlockView({ block }: { bl
         <section className="my-7 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-white dark:bg-gray-900/40 px-5 py-4">
             <p className="flex items-start gap-2.5 text-[16px] font-semibold text-gray-900 dark:text-white leading-[1.7]">
                 <HelpCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <span className="whitespace-pre-line">{block.question}</span>
+                <span className="whitespace-pre-line"><LinkedText text={block.question} /></span>
             </p>
             {block.options.length > 0 && (
                 <ol className="mt-3 ml-7 space-y-2">
@@ -67,7 +68,7 @@ export const QuestionBlockView = memo(function QuestionBlockView({ block }: { bl
                             <span className="flex-shrink-0 w-6 h-6 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-semibold flex items-center justify-center">
                                 {String.fromCharCode(65 + i)}
                             </span>
-                            <span className="pt-0.5">{option}</span>
+                            <span className="pt-0.5"><LinkedText text={option} /></span>
                         </li>
                     ))}
                 </ol>
@@ -94,7 +95,7 @@ export const AnswerBlockView = memo(function AnswerBlockView({ block }: { block:
             </button>
             <div id={panelId} hidden={!open} className="mt-2 flex gap-2.5 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 px-4 py-3">
                 <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-1" aria-hidden="true" />
-                <p className="text-[15px] text-gray-800 dark:text-gray-200 leading-[1.75] whitespace-pre-line">{block.text}</p>
+                <p className="text-[15px] text-gray-800 dark:text-gray-200 leading-[1.75] whitespace-pre-line"><LinkedText text={block.text} /></p>
             </div>
         </div>
     );
@@ -107,13 +108,13 @@ export const SummaryBlockView = memo(function SummaryBlockView({ block }: { bloc
                 <ListChecks className="w-4 h-4" aria-hidden="true" />
                 Key takeaways
             </h4>
-            {block.text && <p className="text-[16px] text-gray-700 dark:text-gray-300 leading-[1.8] whitespace-pre-line mb-3">{block.text}</p>}
+            {block.text && <p className="text-[16px] text-gray-700 dark:text-gray-300 leading-[1.8] whitespace-pre-line mb-3"><LinkedText text={block.text} /></p>}
             {block.points.length > 0 && (
                 <ul className="space-y-2">
                     {block.points.map((point, i) => (
                         <li key={i} className="flex items-start gap-2.5 text-[15.5px] text-gray-800 dark:text-gray-200 leading-[1.7]">
                             <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" aria-hidden="true" />
-                            <span>{point}</span>
+                            <span><LinkedText text={point} /></span>
                         </li>
                     ))}
                 </ul>

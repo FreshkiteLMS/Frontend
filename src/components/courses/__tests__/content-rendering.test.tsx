@@ -57,6 +57,65 @@ const EXPECTED_TEXT: { [K in ContentBlockType]: string } = {
     summary: 'Variables hold data',
 };
 
+describe('URLs in course text', () => {
+    const LC = 'https://leetcode.com/problems/two-sum/';
+    const block = (b: Record<string, unknown>) => ({ id: 'b1', ...b }) as any;
+    const links = (container: HTMLElement) => [...container.querySelectorAll('a')];
+
+    test.each([
+        ['paragraph', { type: 'paragraph', text: `Practice at ${LC}.` }],
+        ['rich text', { type: 'rich_text', segments: [{ text: `Practice at ${LC}.`, bold: false, italic: false, code: false, link: null }] }],
+        ['quote', { type: 'quote', text: `See ${LC}.`, attribution: '' }],
+        ['bullet list', { type: 'bullet_list', items: [`Practice: ${LC}.`] }],
+        ['numbered list', { type: 'numbered_list', items: [`Practice: ${LC}.`] }],
+        ['table', { type: 'table', caption: '', headers: ['Link'], rows: [[`${LC}.`]] }],
+        ['note', { type: 'callout', title: '', text: `See ${LC}.` }],
+        ['tip', { type: 'tip', title: '', text: `See ${LC}.` }],
+        ['warning', { type: 'warning', title: '', text: `See ${LC}.` }],
+        ['example', { type: 'example', title: '', text: `See ${LC}.` }],
+        ['definition', { type: 'definition', term: 'Two Sum', definition: `See ${LC}.` }],
+        ['exercise', { type: 'exercise', title: '', instructions: `Solve ${LC}.`, difficulty: null }],
+        ['question', { type: 'question', question: `Did you read ${LC}?`, options: [] }],
+        ['summary', { type: 'summary', text: `See ${LC}.`, points: [] }],
+    ])('a plain-text URL in a stored %s block is a safe link without its punctuation', (_name, b) => {
+        const { container } = render(<ContentBlockRenderer block={block(b)} />);
+        const [a] = links(container);
+        expect(a.getAttribute('href')).toBe(LC);
+        expect(a.getAttribute('target')).toBe('_blank');
+        expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+        expect(a.textContent).toBe(LC);
+    });
+
+    test('a labelled link in a list item shows its label', () => {
+        const { container } = render(<ContentBlockRenderer block={block({ type: 'bullet_list', items: [`Try [Two Sum](${LC}) today`] })} />);
+        expect(links(container)[0].textContent).toBe('Two Sum');
+        expect(container.textContent).toBe('Try Two Sum today');
+    });
+
+    test('a structured rich-text link renders once, not twice', () => {
+        const { container } = render(<ContentBlockRenderer block={block({ type: 'rich_text', segments: [{ text: LC, bold: false, italic: false, code: false, link: LC }] })} />);
+        expect(links(container)).toHaveLength(1);
+        expect(container.querySelector('a a')).toBeNull();
+    });
+
+    test('text that merely mentions https, and unsafe schemes, stay text', () => {
+        const { container } = render(<ContentBlockRenderer block={block({ type: 'paragraph', text: 'Use https everywhere, not javascript:alert(1) or https://nodot' })} />);
+        expect(links(container)).toHaveLength(0);
+    });
+
+    test('code is never linkified', () => {
+        const { container } = render(<ContentBlockRenderer block={block({ type: 'code', language: 'bash', code: `curl ${LC}`, caption: '' })} />);
+        expect(links(container)).toHaveLength(0);
+        const inline = render(<ContentBlockRenderer block={block({ type: 'rich_text', segments: [{ text: LC, bold: false, italic: false, code: true, link: null }] })} />);
+        expect(links(inline.container)).toHaveLength(0);
+    });
+
+    test('HTML in course text is shown as text, never parsed', () => {
+        const { container } = render(<ContentBlockRenderer block={block({ type: 'paragraph', text: '<img src=x onerror=alert(1)> and <script>x</script>' })} />);
+        expect(container.querySelector('img, script')).toBeNull();
+    });
+});
+
 describe('ContentBlockRenderer', () => {
     test('every supported block type has a renderer', () => {
         expect(Object.keys(BLOCK_RENDERERS).sort()).toEqual(Object.keys(SAMPLES).sort());

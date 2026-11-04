@@ -10,6 +10,8 @@ const SIZES = {
     lg: 'sm:max-w-lg',
     xl: 'sm:max-w-2xl',
     '2xl': 'sm:max-w-4xl',
+    // Wide enough for a video to be the page: 90% of the window, up to a limit.
+    video: 'sm:w-[90vw] sm:max-w-[1280px]',
 } as const;
 
 /**
@@ -35,6 +37,7 @@ export function Modal({
     closeOnBackdrop = true,
     initialFocusRef,
     bodyClassName = 'p-5',
+    panelClassName = '',
 }: {
     open: boolean;
     onClose: () => void;
@@ -47,6 +50,7 @@ export function Modal({
     closeOnBackdrop?: boolean;
     initialFocusRef?: React.RefObject<HTMLElement | null>;
     bodyClassName?: string;
+    panelClassName?: string;
 }) {
     const panelRef = useRef<HTMLDivElement>(null);
     const titleId = useId();
@@ -107,7 +111,7 @@ export function Modal({
                 aria-labelledby={titleId}
                 aria-describedby={description ? descId : undefined}
                 tabIndex={-1}
-                className={`relative w-full ${SIZES[size]} max-h-[92dvh] sm:max-h-[min(88dvh,820px)] flex flex-col bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 outline-none ui-pop-in`}
+                className={`${panelClassName} relative w-full ${SIZES[size]} max-h-[92dvh] ${size === 'video' ? '' : 'sm:max-h-[min(88dvh,820px)]'} flex flex-col bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 outline-none ui-pop-in`}
             >
                 <div className="flex items-start gap-3 px-5 pt-5 pb-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
                     {icon && <div className="shrink-0 mt-0.5">{icon}</div>}

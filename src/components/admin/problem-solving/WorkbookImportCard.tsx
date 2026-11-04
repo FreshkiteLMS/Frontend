@@ -72,7 +72,7 @@ export function WorkbookPreviewView({ preview }: { preview: WorkbookPreview }) {
             <p className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
                 {preview.stats.problemCount} problems in {preview.stats.sectionCount} categor{preview.stats.sectionCount === 1 ? 'y' : 'ies'}
-                {preview.format === 'structured' && preview.hasVideoSheet && ` · ${withVideos} with videos`}
+                {((preview.format === 'structured' && preview.hasVideoSheet) || withVideos > 0) && ` · ${withVideos} with videos`}
             </p>
             {preview.format === 'legacy' && <p className="mt-1 text-xs text-gray-500">Read with the original sheet format (no Problems / Video Solutions sheets found).</p>}
             {preview.warnings.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-amber-700 dark:text-amber-400">{preview.warnings.slice(0, 10).map((w, i) => <li key={i}>{w}</li>)}</ul>}

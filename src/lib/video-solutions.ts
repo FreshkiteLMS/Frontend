@@ -4,6 +4,8 @@
  * the server validates again on save.
  */
 
+import { extractYouTubeId } from '@/lib/video-utils';
+
 export const VIDEO_LANGUAGES = [
     { code: 'en', name: 'English' },
     { code: 'ta', name: 'Tamil' },
@@ -15,6 +17,10 @@ export const VIDEO_LANGUAGES = [
 
 export const OTHER_LANGUAGE = 'other';
 
+/** A video whose source didn't say which language it is in. Never guessed. */
+export const UNSPECIFIED_LANGUAGE = 'und';
+export const UNSPECIFIED_LANGUAGE_NAME = 'Not specified';
+
 export const VIDEO_URL_HINT = 'YouTube, Vimeo or Google Drive link, or a direct .mp4 / .webm / .ogg / .m3u8 file';
 
 export function isSupportedVideoUrl(raw: string): boolean {
@@ -24,10 +30,7 @@ export function isSupportedVideoUrl(raw: string): boolean {
     try { u = new URL(s); } catch { return false; }
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
     const host = u.hostname.toLowerCase().replace(/^www\./, '');
-    if (['youtube.com', 'm.youtube.com', 'youtu.be', 'youtube-nocookie.com'].includes(host)) {
-        const id = host === 'youtu.be' ? u.pathname.slice(1) : u.searchParams.get('v') || (/^\/(embed|shorts|live)\/([^/?#]+)/.exec(u.pathname)?.[2] ?? '');
-        return /^[A-Za-z0-9_-]{6,20}$/.test(id);
-    }
+    if (['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'youtube-nocookie.com'].includes(host)) return !!extractYouTubeId(s);
     if (host === 'vimeo.com' || host === 'player.vimeo.com') return /\/\d{5,}/.test(u.pathname);
     if (host === 'drive.google.com') return /\/file\/d\/[A-Za-z0-9_-]{10,}/.test(u.pathname) || !!u.searchParams.get('id');
     return /\.(mp4|webm|ogg|ogv|m3u8)$/i.test(u.pathname);
@@ -36,9 +39,8 @@ export function isSupportedVideoUrl(raw: string): boolean {
 /** A custom language name the server will accept for "Other". */
 export const isValidLanguageName = (name: string) => /^\p{L}[\p{L}\p{M} ()'.-]{0,38}\p{L}$/u.test(name.trim());
 
-/** Stable key for duplicate detection (matches the server's code for catalog languages). */
-export function languageKey(code: string, name: string): string {
-    if (code && code !== OTHER_LANGUAGE && !code.startsWith('x-')) return code;
-    const known = VIDEO_LANGUAGES.find(l => l.name.toLowerCase() === name.trim().toLowerCase());
-    return known ? known.code : `name:${name.trim().toLowerCase()}`;
+/** Identity of a video for duplicate detection: every form of one YouTube link is the same video. */
+export function videoKey(url: string): string {
+    const yt = extractYouTubeId(url);
+    return yt ? `youtube:${yt}` : url.trim();
 }

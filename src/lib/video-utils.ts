@@ -1,34 +1,54 @@
 
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{6,20}$/;
+const YOUTUBE_HOSTS = ['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com'];
+
+function parseUrl(raw: string): URL | null {
+    const s = raw.trim();
+    if (!s || /\s/.test(s)) return null;
+    try {
+        // Pasted links often have no scheme: "youtu.be/abc", "www.youtube.com/watch?v=abc".
+        return new URL(/^(?:www\.|m\.)?(?:youtube\.com|youtu\.be|youtube-nocookie\.com)\//i.test(s) ? `https://${s}` : s);
+    } catch {
+        return null;
+    }
+}
+
 /**
- * Extract YouTube video ID from various URL formats
+ * Extract YouTube video ID from various URL formats: watch, youtu.be, embed,
+ * shorts, live and youtube-nocookie.com. Null for anything else, including
+ * look-alike hosts and malformed ids.
  */
 export function extractYouTubeId(url: string): string | null {
     if (!url) return null;
+    const u = parseUrl(url);
+    if (!u || (u.protocol !== 'https:' && u.protocol !== 'http:')) return null;
 
-    // Remove whitespace
-    url = url.trim();
+    const host = u.hostname.toLowerCase().replace(/^www\./, '');
+    let id: string | null | undefined;
+    if (host === 'youtu.be') id = u.pathname.split('/')[1];
+    else if (YOUTUBE_HOSTS.includes(host)) id = u.searchParams.get('v') || /^\/(?:embed|shorts|live|v)\/([^/?#]+)/.exec(u.pathname)?.[1];
+    return id && YOUTUBE_ID_RE.test(id) ? id : null;
+}
 
-    // Pattern 1: youtube.com/watch?v=VIDEO_ID
-    const watchPattern = /(?:youtube\.com\/watch\?v=|youtube\.com\/watch\?.*&v=)([^&\s]+)/;
-    let match = url.match(watchPattern);
-    if (match && match[1]) return match[1];
+/** The start offset a link asks for: t=90, t=1m30s or start=90. */
+function startSeconds(u: URL): number {
+    const raw = u.searchParams.get('t') ?? u.searchParams.get('start');
+    const m = raw ? /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/.exec(raw) : null;
+    return m ? Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0) : 0;
+}
 
-    // Pattern 2: youtu.be/VIDEO_ID
-    const shortPattern = /youtu\.be\/([^?\s]+)/;
-    match = url.match(shortPattern);
-    if (match && match[1]) return match[1];
-
-    // Pattern 3: youtube.com/embed/VIDEO_ID
-    const embedPattern = /youtube\.com\/embed\/([^?\s]+)/;
-    match = url.match(embedPattern);
-    if (match && match[1]) return match[1];
-
-    // Pattern 4: m.youtube.com/watch?v=VIDEO_ID (mobile)
-    const mobilePattern = /m\.youtube\.com\/watch\?v=([^&\s]+)/;
-    match = url.match(mobilePattern);
-    if (match && match[1]) return match[1];
-
-    return null;
+/**
+ * Player URL for an embedded YouTube video, or null when the link isn't a
+ * YouTube video. `enablejsapi` lets the player report embedding restrictions.
+ */
+export function getYouTubePlayerUrl(url: string, origin?: string): string | null {
+    const id = extractYouTubeId(url);
+    if (!id) return null;
+    const params = new URLSearchParams({ enablejsapi: '1', rel: '0' });
+    if (origin) params.set('origin', origin);
+    const start = startSeconds(parseUrl(url)!);
+    if (start > 0) params.set('start', String(start));
+    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?${params}`;
 }
 
 /**
@@ -46,5 +66,11 @@ export function getYouTubeEmbedUrl(url: string): string | null {
  */
 export function isYouTubeUrl(url: string): boolean {
     if (!url) return false;
-    return /(?:youtube\.com|youtu\.be)/.test(url);
+    return /(?:youtube\.com|youtube-nocookie\.com|youtu\.be)/.test(url);
+}
+
+/** An http(s) link that is safe to open in a new tab, or null (e.g. javascript: URLs). */
+export function safeExternalUrl(url: string): string | null {
+    const u = parseUrl(url);
+    return u && (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : null;
 }

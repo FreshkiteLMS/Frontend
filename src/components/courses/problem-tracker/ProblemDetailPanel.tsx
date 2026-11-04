@@ -1,18 +1,14 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Code2, ExternalLink, FileText, Lock, Mic, PlayCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Code2, ExternalLink, FileText, Lock, Mic } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
-import { problemCourseService } from '@/services/api/problem-course.api';
-import { apiErrorMessage } from '@/services/api/structured-course.api';
-import type { ProblemDetail, ProblemPanelTab, TrackerProblem } from '@/types/problem-course';
+import type { ProblemPanelTab, TrackerProblem } from '@/types/problem-course';
 import { DifficultyBadge } from './DifficultyBadge';
-import { VideoSolutionPlayer } from './VideoSolutionPlayer';
 import { ProblemLogicPractice } from './ProblemLogicPractice';
+import { useProblemDetail } from './useProblemDetail';
 
 const TABS: { id: ProblemPanelTab; label: string; Icon: typeof FileText }[] = [
     { id: 'problem', label: 'Problem', Icon: FileText },
-    { id: 'video', label: 'Video solution', Icon: PlayCircle },
     { id: 'explain', label: 'Explain your approach', Icon: Mic },
 ];
 
@@ -26,8 +22,8 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 }
 
 /**
- * One problem in a dialog over the tracker: statement, multilingual video
- * solutions and the AI logic assessment, in tabs so nothing is crowded.
+ * One problem in a dialog over the tracker: its statement and the AI logic
+ * assessment, in tabs. Videos have their own dialog (ProblemVideoModal).
  * Previous/next move through the visible problems without leaving the page.
  */
 export function ProblemDetailPanel({
@@ -47,28 +43,10 @@ export function ProblemDetailPanel({
     onPrev: (() => void) | null;
     onNext: (() => void) | null;
 }) {
-    const [detail, setDetail] = useState<ProblemDetail | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [denied, setDenied] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        setDetail(null);
-        setError(null);
-        setDenied(false);
-        problemCourseService.getProblem(courseId, problem.id)
-            .then(d => { if (!cancelled) setDetail(d); })
-            .catch(err => {
-                if (cancelled) return;
-                if (err?.response?.status === 404) setDenied(true);
-                else setError(apiErrorMessage(err, 'Could not load this problem.'));
-            });
-        return () => { cancelled = true; };
-    }, [courseId, problem.id]);
+    const { detail, error, denied } = useProblemDetail(courseId, problem.id);
 
     const st = detail?.statement;
     const hasStatement = !!(st && (st.description || st.constraints || st.examples.length));
-    const videoCount = detail ? detail.videoSolutions.length || (detail.legacyVideoUrl ? 1 : 0) : problem.videoLanguages?.length ?? 0;
 
     return (
         <Modal
@@ -113,7 +91,6 @@ export function ProblemDetailPanel({
                         className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors ${tab === id ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}`}
                     >
                         <Icon className="h-4 w-4" aria-hidden="true" />{label}
-                        {id === 'video' && videoCount > 1 && <span className="rounded-full bg-gray-100 dark:bg-gray-800 px-1.5 text-[10px]">{videoCount}</span>}
                     </button>
                 ))}
             </div>
@@ -122,7 +99,7 @@ export function ProblemDetailPanel({
                 {denied ? (
                     <div className="flex flex-col items-center py-10 text-center">
                         <Lock className="h-8 w-8 text-gray-300" aria-hidden="true" />
-                        <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">Enroll in this course to see problem details, video solutions and AI feedback.</p>
+                        <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">Enroll in this course to see problem details and AI feedback.</p>
                     </div>
                 ) : error ? (
                     <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>
@@ -164,8 +141,6 @@ export function ProblemDetailPanel({
                             </details>
                         )}
                     </div>
-                ) : tab === 'video' ? (
-                    <VideoSolutionPlayer key={detail.id} videos={detail.videoSolutions} legacyUrl={detail.legacyVideoUrl} problemTitle={detail.title} />
                 ) : (
                     <ProblemLogicPractice key={detail.id} courseId={courseId} problemId={detail.id} problemTitle={detail.title} />
                 )}

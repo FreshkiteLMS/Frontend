@@ -78,8 +78,11 @@ export type ProcessingStatus =
     | 'uploaded'
     | 'processing'
     | 'extracting'
+    | 'analyzing'
     | 'structuring'
     | 'validating'
+    | 'saving'
+    | 'verifying'
     | 'completed'
     | 'failed';
 
@@ -91,6 +94,10 @@ export interface ProcessingState {
     warnings: string[];
     chunks_total: number | null;
     chunks_done: number | null;
+    modules_detected: number | null;
+    lessons_detected: number | null;
+    modules_done: number | null;
+    lessons_done: number | null;
     model: string | null;
     started_at: string;
     finished_at: string | null;

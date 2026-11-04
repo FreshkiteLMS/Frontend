@@ -598,10 +598,13 @@ function PreferencesSection({ data, onSaved }: { data: AccountOverview; onSaved:
 
 function ManagementSection({ data, onChanged }: { data: AccountOverview; onChanged: () => Promise<void> }) {
     const { logout } = useAuth();
-    const [confirm, setConfirm] = useState<'everywhere' | 'delete' | null>(null);
+    const [confirm, setConfirm] = useState<'everywhere' | 'delete' | 'delete-now' | null>(null);
     const [reason, setReason] = useState('');
     const [exporting, setExporting] = useState(false);
     const isAdmin = data.account.role === 'admin';
+    const isStudent = data.account.role === 'student';
+    const isTeacher = data.account.role === 'teacher';
+    const confirmByEmail = data.account.delete_confirmation === 'email';
 
     const exportData = async () => {
         setExporting(true);
@@ -627,7 +630,17 @@ function ManagementSection({ data, onChanged }: { data: AccountOverview; onChang
             <Row title="Sign out everywhere" body="End every session, including this one." action={<Button variant="secondary" onClick={() => setConfirm('everywhere')}>Sign out everywhere</Button>} />
             <Row title="Download your data" body="A JSON copy of your account, profile, learning records, achievements and goals." action={<Button variant="secondary" onClick={() => void exportData()} busy={exporting}><Download className="w-4 h-4" /> Download</Button>} />
 
-            {!isAdmin && (
+            {isStudent && (
+                <div className="rounded-2xl border border-red-200 dark:border-red-500/30 p-5">
+                    <h3 className="font-bold text-red-700 dark:text-red-400 flex items-center gap-2"><Trash2 className="w-4 h-4" /> Delete account</h3>
+                    <div className="mt-2 space-y-3">
+                        <p className="text-sm text-gray-600 dark:text-gray-300">Permanently delete your account right away. You’ll lose access to every course you’ve paid for, along with your progress, scores and certificates. This can’t be undone, so download your data first if you want a copy.</p>
+                        <Button variant="danger" onClick={() => setConfirm('delete-now')}>Delete my account</Button>
+                    </div>
+                </div>
+            )}
+
+            {isTeacher && (
                 <div className="rounded-2xl border border-red-200 dark:border-red-500/30 p-5">
                     <h3 className="font-bold text-red-700 dark:text-red-400 flex items-center gap-2"><Trash2 className="w-4 h-4" /> Close account</h3>
                     {data.deletion_request ? (
@@ -663,6 +676,26 @@ function ManagementSection({ data, onChanged }: { data: AccountOverview; onChang
                     onClose={() => setConfirm(null)}
                     onConfirm={async () => {
                         await accountService.revokeAllSessions();
+                        logout();
+                    }}
+                />
+            )}
+            {confirm === 'delete-now' && (
+                <ConfirmDialog
+                    title="Delete your account permanently?"
+                    body="Your account, course access, progress and scores will be deleted immediately. Messages you sent stay in other people’s chats, shown from “Deleted user”."
+                    confirmLabel="Delete my account"
+                    danger
+                    requirePassword={!confirmByEmail}
+                    requireText={confirmByEmail ? { label: `Type your email (${data.account.email}) to confirm`, value: data.account.email } : undefined}
+                    onClose={() => setConfirm(null)}
+                    onConfirm={async (secret) => {
+                        try {
+                            await accountService.deleteAccount(confirmByEmail ? { email: secret } : { password: secret });
+                        } catch (err) {
+                            throw new Error(apiErrorMessage(err, 'Could not delete your account'));
+                        }
+                        toast.success('Your account has been deleted');
                         logout();
                     }}
                 />

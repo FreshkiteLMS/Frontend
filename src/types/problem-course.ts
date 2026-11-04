@@ -29,6 +29,8 @@ export interface TrackerProblem {
     hasStatement?: boolean;
     /** Published video languages, default first. */
     videoLanguages?: string[];
+    /** Published videos, including several in one language. */
+    videoCount?: number;
     completed: boolean;
     attempts: number;
     completedAt: string | null;
@@ -109,6 +111,8 @@ export interface ProblemStatement {
 }
 
 export type VideoStatus = 'published' | 'draft';
+/** 'explanation' teaches the concept; 'solution' walks through the answer. */
+export type VideoType = 'explanation' | 'solution';
 
 export interface VideoSolution {
     id: string;
@@ -118,6 +122,7 @@ export interface VideoSolution {
     url: string;
     description: string;
     isDefault: boolean;
+    videoType?: VideoType;
     /** Admin views only. */
     status?: VideoStatus;
     updatedAt?: string;
@@ -280,5 +285,5 @@ export interface LogicAssessmentRow {
 }
 
 export type ProblemPanelTab = 'problem' | 'video' | 'explain';
-/** Open the problem panel on a tab (tracker rows). */
+/** Open a problem on a tab (tracker rows). 'video' opens the video player; the others the problem panel. */
 export type OpenProblemHandler = (problem: TrackerProblem, tab?: ProblemPanelTab) => void;

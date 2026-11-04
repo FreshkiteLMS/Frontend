@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { Eye, Plus, Star, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { VideoSolutionPlayer } from '@/components/courses/problem-tracker/VideoSolutionPlayer';
-import { VIDEO_LANGUAGES, OTHER_LANGUAGE, VIDEO_URL_HINT, isSupportedVideoUrl, isValidLanguageName, languageKey } from '@/lib/video-solutions';
-import type { VideoStatus } from '@/types/problem-course';
+import { VIDEO_LANGUAGES, OTHER_LANGUAGE, UNSPECIFIED_LANGUAGE, UNSPECIFIED_LANGUAGE_NAME, VIDEO_URL_HINT, isSupportedVideoUrl, isValidLanguageName, videoKey } from '@/lib/video-solutions';
+import type { VideoStatus, VideoType } from '@/types/problem-course';
 
 /** One editable row. `language` is a catalog code or OTHER_LANGUAGE with `customName`. */
 export interface VideoDraft {
@@ -18,14 +18,16 @@ export interface VideoDraft {
     description: string;
     isDefault: boolean;
     status: VideoStatus;
+    videoType: VideoType;
 }
 
 let seq = 0;
 export const newVideoDraft = (partial: Partial<VideoDraft> = {}): VideoDraft => ({
-    key: `v${++seq}`, title: '', language: 'en', customName: '', url: '', description: '', isDefault: false, status: 'published', ...partial,
+    key: `v${++seq}`, title: '', language: 'en', customName: '', url: '', description: '', isDefault: false, status: 'published', videoType: 'solution', ...partial,
 });
 
 export function languageNameOf(d: VideoDraft): string {
+    if (d.language === UNSPECIFIED_LANGUAGE) return UNSPECIFIED_LANGUAGE_NAME;
     return d.language === OTHER_LANGUAGE ? d.customName.trim() : VIDEO_LANGUAGES.find(l => l.code === d.language)?.name ?? d.language;
 }
 
@@ -36,9 +38,11 @@ export function validateVideoDrafts(rows: VideoDraft[]): Record<string, string> 
     rows.forEach((r, i) => {
         if (r.language === OTHER_LANGUAGE && !isValidLanguageName(r.customName)) errors[`${r.key}.language`] = 'Type the language name (letters only).';
         if (!isSupportedVideoUrl(r.url)) errors[`${r.key}.url`] = `Enter a ${VIDEO_URL_HINT}.`;
-        const k = languageKey(r.language, languageNameOf(r));
-        if (seen.has(k)) errors[`${r.key}.language`] = `Video #${seen.get(k)! + 1} already uses this language.`;
-        else seen.set(k, i);
+        else {
+            const k = videoKey(r.url);
+            if (seen.has(k)) errors[`${r.key}.url`] = `Video #${seen.get(k)! + 1} is already this video.`;
+            else seen.set(k, i);
+        }
         if (r.isDefault && r.status === 'draft') errors[`${r.key}.isDefault`] = 'The default video must be published.';
         if (r.title.length > 200) errors[`${r.key}.title`] = 'At most 200 characters.';
     });
@@ -46,8 +50,8 @@ export function validateVideoDrafts(rows: VideoDraft[]): Record<string, string> 
 }
 
 /**
- * Add, edit, remove and preview a problem's solution videos, one per
- * language. Changes stay local until the parent saves the whole list.
+ * Add, edit, remove and preview a problem's solution videos, in any number
+ * of languages. Changes stay local until the parent saves the whole list.
  */
 export function VideoSolutionsEditor({
     rows,
@@ -81,12 +85,20 @@ export function VideoSolutionsEditor({
                     <legend className="px-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
                         Video {i + 1}{languageNameOf(r) ? ` · ${languageNameOf(r)}` : ''}
                     </legend>
-                    <div className="grid gap-3 sm:grid-cols-[150px_1fr]">
+                    <div className="grid gap-3 sm:grid-cols-[150px_150px_1fr]">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300" htmlFor={`${r.key}-type`}>Type</label>
+                            <select id={`${r.key}-type`} value={r.videoType} onChange={e => update(r.key, { videoType: e.target.value as VideoType })} className={input()}>
+                                <option value="explanation">Explanation</option>
+                                <option value="solution">Solution</option>
+                            </select>
+                        </div>
                         <div>
                             <label className="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300" htmlFor={`${r.key}-lang`}>Language</label>
                             <select id={`${r.key}-lang`} value={r.language} onChange={e => update(r.key, { language: e.target.value })} className={input(errors[`${r.key}.language`])}>
                                 {VIDEO_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
                                 <option value={OTHER_LANGUAGE}>Other…</option>
+                                <option value={UNSPECIFIED_LANGUAGE}>{UNSPECIFIED_LANGUAGE_NAME}</option>
                             </select>
                             {r.language === OTHER_LANGUAGE && (
                                 <input aria-label="Language name" value={r.customName} onChange={e => update(r.key, { customName: e.target.value })} placeholder="e.g. Bengali" maxLength={40} className={`${input(errors[`${r.key}.language`])} mt-2`} />
@@ -98,7 +110,7 @@ export function VideoSolutionsEditor({
                             <input id={`${r.key}-url`} value={r.url} onChange={e => update(r.key, { url: e.target.value.trim() })} placeholder="https://www.youtube.com/watch?v=…" inputMode="url" className={input(errors[`${r.key}.url`])} />
                             <Err k={`${r.key}.url`} />
                         </div>
-                        <div className="sm:col-span-2 grid gap-3 sm:grid-cols-2">
+                        <div className="sm:col-span-3 grid gap-3 sm:grid-cols-2">
                             <div>
                                 <label className="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300" htmlFor={`${r.key}-title`}>Title <span className="font-normal text-gray-400">(optional)</span></label>
                                 <input id={`${r.key}-title`} value={r.title} onChange={e => update(r.key, { title: e.target.value })} placeholder={`${problemTitle} – ${languageNameOf(r) || 'language'}`} maxLength={200} className={input(errors[`${r.key}.title`])} />

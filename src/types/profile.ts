@@ -215,6 +215,7 @@ export interface AccountOverview {
         student_code?: string | null;
         created_at: string | null;
         has_password: boolean;
+        delete_confirmation: 'password' | 'email';
         email_change_supported: boolean;
         username_rules: string;
     };

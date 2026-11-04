@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from 'react';
 import { AlertTriangle, Info, Lightbulb } from 'lucide-react';
 import type { BlockOf } from '@/types/structured-course';
+import { LinkedText } from './linked-text';
 
 const VARIANTS = {
     note: {
@@ -43,13 +44,13 @@ export function CalloutView({ variant, title, children }: { variant: CalloutVari
 }
 
 export const CalloutBlockView = memo(function CalloutBlockView({ block }: { block: BlockOf<'callout'> }) {
-    return <CalloutView variant="note" title={block.title}>{block.text}</CalloutView>;
+    return <CalloutView variant="note" title={block.title}><LinkedText text={block.text} /></CalloutView>;
 });
 
 export const TipBlockView = memo(function TipBlockView({ block }: { block: BlockOf<'tip'> }) {
-    return <CalloutView variant="tip" title={block.title}>{block.text}</CalloutView>;
+    return <CalloutView variant="tip" title={block.title}><LinkedText text={block.text} /></CalloutView>;
 });
 
 export const WarningBlockView = memo(function WarningBlockView({ block }: { block: BlockOf<'warning'> }) {
-    return <CalloutView variant="warning" title={block.title}>{block.text}</CalloutView>;
+    return <CalloutView variant="warning" title={block.title}><LinkedText text={block.text} /></CalloutView>;
 });

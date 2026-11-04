@@ -127,19 +127,23 @@ export function useUnsavedGuard(dirty: boolean) {
 
 /** Confirmation for sensitive actions; optional typed/password confirmation. */
 export function ConfirmDialog({
-    title, body, confirmLabel, danger, requirePassword, onConfirm, onClose,
+    title, body, confirmLabel, danger, requirePassword, requireText, onConfirm, onClose,
 }: {
     title: string;
     body: ReactNode;
     confirmLabel: string;
     danger?: boolean;
     requirePassword?: boolean;
+    /** Confirm by retyping a value (case-insensitive) rather than with a password. */
+    requireText?: { label: string; value: string };
     onConfirm: (password: string) => Promise<void>;
     onClose: () => void;
 }) {
     const [password, setPassword] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const textMatches = !requireText || password.trim().toLowerCase() === requireText.value.toLowerCase();
+    const canSubmit = (!requirePassword || !!password) && textMatches;
     const submit = async () => {
         setBusy(true);
         setError(null);
@@ -166,10 +170,15 @@ export function ConfirmDialog({
                         <TextInput type="password" value={password} onChange={setPassword} autoComplete="current-password" onEnter={() => password && void submit()} />
                     </Field>
                 )}
-                {!requirePassword && error && <p className="text-sm text-red-600">{error}</p>}
+                {requireText && (
+                    <Field label={requireText.label} error={error}>
+                        <TextInput value={password} onChange={setPassword} autoComplete="off" onEnter={() => canSubmit && void submit()} />
+                    </Field>
+                )}
+                {!requirePassword && !requireText && error && <p className="text-sm text-red-600">{error}</p>}
                 <div className="flex justify-end gap-2">
                     <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-                    <Button variant={danger ? 'danger' : 'primary'} onClick={() => void submit()} busy={busy} disabled={requirePassword && !password}>{confirmLabel}</Button>
+                    <Button variant={danger ? 'danger' : 'primary'} onClick={() => void submit()} busy={busy} disabled={!canSubmit}>{confirmLabel}</Button>
                 </div>
             </div>
         </div>

@@ -84,6 +84,9 @@ export const accountService = {
         unwrap<GoalView>(await api.post('/account/goals', dto), 'Failed to add goal'),
     removeGoal: async (id: string) => unwrap<{ removed: boolean }>(await api.delete(`/account/goals/${id}`), 'Failed to remove goal'),
 
+    /** Students: permanently deletes the signed-in account, with no approval step. */
+    deleteAccount: async (confirmation: { password: string } | { email: string }) =>
+        unwrap<{ deleted: boolean }>(await api.post('/account/delete', confirmation), 'Failed to delete your account'),
     requestDeletion: async (password: string, reason: string) =>
         unwrap<{ id: string; status: string; created_at: string }>(await api.post('/account/deletion-request', { password, reason }), 'Failed to submit request'),
     cancelDeletion: async () => unwrap<{ cancelled: boolean }>(await api.delete('/account/deletion-request'), 'Failed to cancel request'),

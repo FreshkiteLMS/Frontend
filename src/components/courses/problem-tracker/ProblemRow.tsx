@@ -1,11 +1,17 @@
 import { memo } from 'react';
 import { CheckCircle2, XCircle, CircleDot, Circle, BookOpen, Youtube, Code2, Mic } from 'lucide-react';
 import type { TrackerProblem, ProblemStatus, OpenProblemHandler } from '@/types/problem-course';
+import { problemTitleHref } from '@/lib/problem-links';
 import { DifficultyBadge } from './DifficultyBadge';
 import { StatusDropdown } from './StatusDropdown';
 
-/** Fixed row height — shared with the virtualizer so windowing math stays exact. */
+/**
+ * Fixed row heights — shared with the virtualizer so windowing math stays exact.
+ * Below `sm` the title takes its own line, because the controls leave it no room.
+ * Keep in step with the h-[…] classes on the row.
+ */
 export const ROW_HEIGHT = 64;
+export const PHONE_ROW_HEIGHT = 104;
 
 function StatusIcon({ status }: { status: ProblemStatus }) {
     switch (status) {
@@ -26,17 +32,18 @@ interface ProblemRowProps {
     problem: TrackerProblem;
     busy?: boolean;
     onStatusChange: (problemId: string, status: ProblemStatus) => void;
-    /** Open the problem panel (statement, videos, logic assessment). */
+    /** Open the video player or the "Explain your approach" panel. */
     onOpen?: OpenProblemHandler;
 }
 
 function ProblemRowInner({ problem, busy, onStatusChange, onOpen }: ProblemRowProps) {
-    const { title, difficulty, solutionUrl, videoUrl, problemUrl, tags, externalId, userStatus } = problem;
+    const { title, difficulty, solutionUrl, problemUrl, tags, externalId, userStatus } = problem;
+    const languages = problem.videoLanguages ?? [];
+    const titleHref = problemTitleHref(problem);
 
     return (
         <div
-            style={{ height: ROW_HEIGHT }}
-            className="group flex items-center gap-3 border-b border-gray-100 px-3 transition-colors hover:bg-gray-50 sm:px-4 dark:border-slate-800/70 dark:hover:bg-slate-800/30"
+            className="group flex h-[104px] flex-wrap content-center items-center gap-x-2 gap-y-2 border-b sm:h-16 sm:flex-nowrap sm:gap-3 border-gray-100 px-3 transition-colors hover:bg-gray-50 sm:px-4 dark:border-slate-800/70 dark:hover:bg-slate-800/30"
         >
             {/* completion state */}
             <div className="flex-shrink-0" title={userStatus}>
@@ -51,26 +58,29 @@ function ProblemRowInner({ problem, busy, onStatusChange, onOpen }: ProblemRowPr
             )}
 
             {/* title + tags */}
-            <div className="min-w-0 flex-1">
-                {onOpen ? (
-                    <button
-                        type="button"
-                        onClick={() => onOpen(problem)}
-                        title={`Open ${title}: problem, video solutions and AI logic assessment`}
-                        className="flex max-w-full items-center gap-2 truncate text-left text-sm font-medium text-gray-900 hover:text-blue-600 focus:outline-none focus-visible:underline dark:text-slate-100 dark:hover:text-blue-400"
-                    >
-                        <span className="truncate">{title}</span>
-                        {(problem.videoLanguages?.length ?? 0) > 1 && (
-                            <span className="hidden flex-shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 sm:inline dark:bg-red-500/10 dark:text-red-400" title={`Video solutions in ${problem.videoLanguages!.join(', ')}`}>
-                                {problem.videoLanguages!.length} langs
-                            </span>
-                        )}
-                    </button>
-                ) : (
-                    <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100" title={title}>
-                        {title}
-                    </p>
-                )}
+            <div className="min-w-0 flex-1 basis-[calc(100%-2rem)] sm:basis-0">
+                <div className="flex min-w-0 items-center gap-2">
+                    {titleHref ? (
+                        <a
+                            href={titleHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Open the solutions for ${title}`}
+                            className="truncate text-sm font-medium text-gray-900 hover:text-blue-600 focus:outline-none focus-visible:underline dark:text-slate-100 dark:hover:text-blue-400"
+                        >
+                            {title}
+                        </a>
+                    ) : (
+                        <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100" title={`${title} (no link available)`}>
+                            {title}
+                        </p>
+                    )}
+                    {languages.length > 1 && (
+                        <span className="hidden flex-shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 sm:inline dark:bg-red-500/10 dark:text-red-400" title={`Videos in ${languages.join(', ')}`}>
+                            {languages.length} langs
+                        </span>
+                    )}
+                </div>
                 {tags.length > 0 && (
                     <div className="mt-0.5 hidden items-center gap-1 lg:flex">
                         {tags.slice(0, 3).map(tag => (
@@ -92,12 +102,12 @@ function ProblemRowInner({ problem, busy, onStatusChange, onOpen }: ProblemRowPr
             </div>
 
             {/* status */}
-            <div className="flex w-28 flex-shrink-0 justify-center">
+            <div className="flex flex-shrink-0 justify-center sm:w-28">
                 <StatusDropdown value={userStatus} onChange={s => onStatusChange(problem.id, s)} busy={busy} />
             </div>
 
             {/* actions */}
-            <div className="flex flex-shrink-0 items-center gap-1">
+            <div className="ml-auto flex flex-shrink-0 items-center gap-1 sm:ml-0">
                 {onOpen && (
                     <button
                         type="button"
@@ -110,7 +120,7 @@ function ProblemRowInner({ problem, busy, onStatusChange, onOpen }: ProblemRowPr
                         <span className="hidden md:inline">Explain</span>
                     </button>
                 )}
-                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center">
+                <span className={`${solutionUrl ? 'flex' : 'hidden sm:flex'} h-9 w-9 flex-shrink-0 items-center justify-center`}>
                     {solutionUrl && (
                         <a
                             href={solutionUrl}
@@ -124,26 +134,16 @@ function ProblemRowInner({ problem, busy, onStatusChange, onOpen }: ProblemRowPr
                     )}
                 </span>
                 <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center">
-                    {onOpen && (problem.videoLanguages?.length ?? 0) > 0 ? (
+                    {onOpen && (
                         <button
                             type="button"
                             onClick={() => onOpen(problem, 'video')}
-                            title={`Watch the video solution (${problem.videoLanguages!.join(', ')})`}
-                            aria-label={`Watch the video solution for ${title}`}
+                            title={languages.length ? `Watch the videos (${languages.join(', ')})` : 'Watch the videos'}
+                            aria-label={`Watch the videos for ${title}`}
                             className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-500/10 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-500/15 dark:hover:text-red-400"
                         >
                             <Youtube className="h-4 w-4" />
                         </button>
-                    ) : videoUrl && (
-                        <a
-                            href={videoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Watch video"
-                            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-500/10 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-500/15 dark:hover:text-red-400"
-                        >
-                            <Youtube className="h-4 w-4" />
-                        </a>
                     )}
                 </span>
                 {problemUrl ? (

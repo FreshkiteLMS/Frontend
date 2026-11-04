@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import type { BlockOf } from '@/types/structured-course';
+import { LinkedText } from './linked-text';
 
 /** Presentational table — shared by structured table blocks and legacy sections. */
 export const TableView = memo(function TableView({ headers, rows, caption }: { headers: string[]; rows: string[][]; caption?: string }) {
@@ -23,7 +24,7 @@ export const TableView = memo(function TableView({ headers, rows, caption }: { h
                             <tr key={ri} className={`border-b border-gray-100 dark:border-gray-800 last:border-0 ${ri % 2 === 1 ? 'bg-gray-50/60 dark:bg-gray-800/25' : ''}`}>
                                 {row.map((cell, ci) => (
                                     <td key={ci} className="px-5 py-3.5 text-gray-700 dark:text-gray-300 leading-relaxed align-top whitespace-pre-line">
-                                        {cell}
+                                        <LinkedText text={cell} />
                                     </td>
                                 ))}
                             </tr>
