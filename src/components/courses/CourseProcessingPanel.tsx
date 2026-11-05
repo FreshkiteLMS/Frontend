@@ -6,7 +6,9 @@ import toast from 'react-hot-toast';
 import { courseService } from '@/services/api/course.api';
 import { isValidDocumentUrl } from '@/lib/document-url';
 import type { Course } from '@/types/course';
-import type { ProcessingState, ProcessingStatus, StructuredCourse } from '@/types/structured-course';
+import type { CurriculumDraft, ProcessingState, ProcessingStatus, StructureOptions, StructuredCourse } from '@/types/structured-course';
+import { CurriculumPreview } from './CurriculumPreview';
+import { CustomizeCurriculumForm } from './CustomizeCurriculumForm';
 
 const POLL_INTERVAL_MS = 2500;
 
@@ -17,7 +19,11 @@ const STEPS: { label: string; statuses: ProcessingStatus[] }[] = [
     { label: 'Validating links and resources', statuses: ['validating'] },
     { label: 'Saving course content', statuses: ['saving'] },
     { label: 'Verifying course structure', statuses: ['verifying'] },
+    { label: 'Curriculum ready for review', statuses: ['awaiting_review'] },
 ];
+
+/** Stages that have finished their work, so every step shows as done. */
+const FINISHED: ProcessingStatus[] = ['awaiting_review', 'completed'];
 
 /** Counts as the server last reported them; a stage that hasn't run yet shows nothing. */
 function ProgressCounts({ state }: { state: ProcessingState }) {
@@ -70,17 +76,29 @@ export function CourseProcessingPanel({
 }: CourseProcessingPanelProps) {
     const [state, setState] = useState<ProcessingState | null>(null);
     const [starting, setStarting] = useState(false);
+    const [statusLoaded, setStatusLoaded] = useState(false);
+    const [draft, setDraft] = useState<CurriculumDraft | null>(null);
+    const [applying, setApplying] = useState(false);
     const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const onProcessedRef = useRef(onProcessed);
     onProcessedRef.current = onProcessed;
 
     const docLinkInvalid = docLink.trim().length > 0 && !isValidDocumentUrl(docLink);
-    const busy = starting || !!state?.active;
+    const busy = starting || applying || !!state?.active;
 
     const stopPolling = () => {
         if (pollTimer.current) clearTimeout(pollTimer.current);
         pollTimer.current = null;
     };
+
+    /** The draft waiting for review, if any. A failed later attempt does not hide an earlier valid one. */
+    const loadDraft = useCallback(async (id: string) => {
+        try {
+            setDraft(await courseService.getCurriculumDraft(id));
+        } catch (err) {
+            console.error('Failed to fetch the generated curriculum:', err);
+        }
+    }, []);
 
     const poll = useCallback(async (id: string) => {
         try {
@@ -88,6 +106,8 @@ export function CourseProcessingPanel({
             setState(next);
             if (next?.active) {
                 pollTimer.current = setTimeout(() => poll(id), POLL_INTERVAL_MS);
+            } else if (next?.status === 'awaiting_review') {
+                await loadDraft(id);
             } else if (next?.status === 'completed') {
                 const course = await courseService.getCourseById(id);
                 onProcessedRef.current(course);
@@ -97,7 +117,7 @@ export function CourseProcessingPanel({
             console.error('Failed to fetch processing status:', err);
             pollTimer.current = setTimeout(() => poll(id), POLL_INTERVAL_MS * 2);
         }
-    }, []);
+    }, [loadDraft]);
 
     // Resume tracking an in-flight run (e.g. the admin navigated away and back).
     useEffect(() => {
@@ -107,15 +127,18 @@ export function CourseProcessingPanel({
             .then((current) => {
                 if (cancelled) return;
                 setState(current);
+                setStatusLoaded(true);
                 if (current?.active) pollTimer.current = setTimeout(() => poll(courseId), POLL_INTERVAL_MS);
             })
-            .catch(() => { /* status is optional on load */ });
+            .catch(() => { setStatusLoaded(true); /* status is optional on load */ });
+        // A refresh finds the generated curriculum (and any earlier one) where it was left.
+        void loadDraft(courseId);
         return () => { cancelled = true; stopPolling(); };
-    }, [courseId, poll]);
+    }, [courseId, poll, loadDraft]);
 
     const handleProcess = async () => {
         if (!docLink.trim() || docLinkInvalid) return;
-        if (structured && !window.confirm('Reprocess the document? The current AI-generated lessons will be replaced once the new run succeeds. Student progress is kept for lessons whose titles stay the same.')) {
+        if ((structured || draft) && !window.confirm('Process the document again? It is read afresh and a new curriculum is generated for you to review. The current curriculum stays unchanged until you apply the new one.')) {
             return;
         }
         setStarting(true);
@@ -123,13 +146,60 @@ export function CourseProcessingPanel({
         try {
             const id = await ensureCourseSaved();
             if (!id) throw new Error('Save the course details first.');
-            const initial = await courseService.processDocument(id, docLink.trim());
+            const initial = await courseService.processDocument(id, docLink.trim(), { review: true });
             setState(initial);
             pollTimer.current = setTimeout(() => poll(id), POLL_INTERVAL_MS);
         } catch (err: any) {
             toast.error(apiErrorMessage(err, 'Failed to start processing.'));
         } finally {
             setStarting(false);
+        }
+    };
+
+    const handleReprocess = async (options: StructureOptions) => {
+        if (!courseId || busy) return;
+        setStarting(true);
+        stopPolling();
+        try {
+            const initial = await courseService.reprocessDocument(courseId, options);
+            setState((prev) => ({ ...initial, source_available: prev?.source_available ?? true }));
+            pollTimer.current = setTimeout(() => poll(courseId), POLL_INTERVAL_MS);
+        } catch (err: any) {
+            toast.error(apiErrorMessage(err, 'Failed to start reprocessing.'));
+        } finally {
+            setStarting(false);
+        }
+    };
+
+    const handleApply = async (acknowledgeReview: boolean) => {
+        if (!courseId || !draft || busy) return;
+        if (draft.current && !window.confirm(`Replace the current curriculum (${draft.current.modules} modules, ${draft.current.lessons} lessons) with this one? Students will see the new structure. Progress is kept for lessons whose titles stay the same.`)) {
+            return;
+        }
+        setApplying(true);
+        try {
+            await courseService.approveCurriculumDraft(courseId, draft.run_id, acknowledgeReview);
+            setDraft(null);
+            setState(await courseService.getProcessingStatus(courseId));
+            onProcessedRef.current(await courseService.getCourseById(courseId));
+            toast.success('Curriculum applied.');
+        } catch (err: any) {
+            toast.error(apiErrorMessage(err, 'Failed to apply the curriculum.'));
+            void loadDraft(courseId);
+        } finally {
+            setApplying(false);
+        }
+    };
+
+    const handleDiscard = async () => {
+        if (!courseId || !draft || busy) return;
+        if (!window.confirm('Discard the generated curriculum? The current curriculum is not affected.')) return;
+        try {
+            await courseService.discardCurriculumDraft(courseId, draft.run_id);
+            setDraft(null);
+            setState(await courseService.getProcessingStatus(courseId));
+        } catch (err: any) {
+            toast.error(apiErrorMessage(err, 'Failed to discard the draft.'));
         }
     };
 
@@ -140,6 +210,7 @@ export function CourseProcessingPanel({
         lastStatus.current = state?.status ?? null;
         if (!prev || prev === state?.status) return;
         if (state?.status === 'completed' && prev !== 'completed') toast.success('Document processed — lessons are ready to preview.');
+        if (state?.status === 'awaiting_review' && prev !== 'awaiting_review') toast.success('Curriculum generated — review it below before applying.');
         if (state?.status === 'failed' && prev !== 'failed') toast.error(state.error?.message || 'Processing failed.');
     }, [state]);
 
@@ -198,8 +269,8 @@ export function CourseProcessingPanel({
                             <ol className="flex flex-wrap gap-x-4 gap-y-2">
                                 {STEPS.map((step, i) => {
                                     const failed = state.status === 'failed';
-                                    const done = !failed && i < activeStep;
-                                    const current = !failed && i === activeStep;
+                                    const done = !failed && (FINISHED.includes(state.status) ? true : i < activeStep);
+                                    const current = !failed && !FINISHED.includes(state.status) && i === activeStep;
                                     return (
                                         <li key={step.label} className={`flex items-center gap-1.5 text-xs font-medium ${
                                             done ? 'text-green-700 dark:text-green-400'
@@ -224,8 +295,10 @@ export function CourseProcessingPanel({
                                         {(state.lessons_done ?? 0) > 0 && (
                                             <p className="mt-1 text-red-700/80 dark:text-red-300/70">Lessons already processed are kept: processing this document again continues from there.</p>
                                         )}
-                                        {structured && (
-                                            <p className="mt-1 text-red-700/80 dark:text-red-300/70">The previously processed lessons are unchanged.</p>
+                                        {(structured || draft) && (
+                                            <p className="mt-1 text-red-700/80 dark:text-red-300/70">
+                                                {draft ? 'Your previous generated curriculum and the current curriculum are unchanged.' : 'The previously processed lessons are unchanged.'}
+                                            </p>
                                         )}
                                     </div>
                                 </div>
@@ -237,7 +310,7 @@ export function CourseProcessingPanel({
                         <div className="mt-5 rounded-lg border border-blue-100 dark:border-blue-900 bg-white dark:bg-gray-800 p-4">
                             <div className="flex flex-wrap items-center gap-2 mb-3">
                                 <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
-                                <span className="text-sm font-semibold text-gray-900 dark:text-white">Structured content</span>
+                                <span className="text-sm font-semibold text-gray-900 dark:text-white">{draft ? 'Current curriculum (students see this)' : 'Structured content'}</span>
                                 <span className="px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-semibold">
                                     {structured.modules.length} module{structured.modules.length === 1 ? '' : 's'}
                                 </span>
@@ -264,6 +337,29 @@ export function CourseProcessingPanel({
                                 </details>
                             )}
                         </div>
+                    )}
+
+                    {draft && (
+                        <CurriculumPreview
+                            draft={draft}
+                            busy={busy}
+                            applying={applying}
+                            onApply={handleApply}
+                            onDiscard={handleDiscard}
+                        />
+                    )}
+
+                    {courseId && (draft || structured) && (
+                        <CustomizeCurriculumForm
+                            // Reset to the settings behind the curriculum shown, e.g. after a refresh.
+                            key={draft?.run_id ?? 'current'}
+                            initial={draft?.options}
+                            busy={busy}
+                            unavailableReason={statusLoaded && !state?.source_available
+                                ? 'Process the document once (button above) so the original content is stored; then you can customize the structure.'
+                                : null}
+                            onSubmit={handleReprocess}
+                        />
                     )}
                 </div>
             </div>

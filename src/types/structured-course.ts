@@ -83,6 +83,7 @@ export type ProcessingStatus =
     | 'validating'
     | 'saving'
     | 'verifying'
+    | 'awaiting_review'
     | 'completed'
     | 'failed';
 
@@ -99,7 +100,50 @@ export interface ProcessingState {
     modules_done: number | null;
     lessons_done: number | null;
     model: string | null;
+    /** 'review' runs end at a draft the admin must apply. */
+    mode?: 'direct' | 'review';
+    /** True once the original document content is stored, which customizing the structure needs. */
+    source_available?: boolean;
     started_at: string;
     finished_at: string | null;
     updated_at: string;
+}
+
+// ─── Admin-controlled curriculum structure ───────────────────────────────────
+
+export type ContentDensity = 'compact' | 'balanced' | 'detailed';
+export type OrganizationStrategy = 'headings' | 'concept' | 'learning_path';
+
+export interface StructureOptions {
+    targetModules: number | null;
+    targetLessons: number | null;
+    density: ContentDensity;
+    strategy: OrganizationStrategy;
+    instructions: string;
+}
+
+export interface CurriculumDraft {
+    run_id: number;
+    created_at: string;
+    model: string;
+    options: StructureOptions;
+    summary: {
+        sourceContentPreserved: boolean;
+        requestedModules: number | null;
+        generatedModules: number;
+        requestedLessons: number | null;
+        generatedLessons: number;
+        deviationReason: string;
+    };
+    needs_review: boolean;
+    review_reasons: string[];
+    warnings: string[];
+    modules: {
+        id: string;
+        title: string;
+        description: string;
+        lessons: { id: string; title: string; description: string; words: number | null; source_sections: string[] }[];
+    }[];
+    /** What students see now; null when nothing has been applied yet. */
+    current: { modules: number; lessons: number } | null;
 }

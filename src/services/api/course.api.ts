@@ -1,7 +1,7 @@
 import api from './axios';
 
 import { Course } from '@/types/course';
-import type { ProcessingState } from '@/types/structured-course';
+import type { CurriculumDraft, ProcessingState, StructureOptions } from '@/types/structured-course';
 
 export const courseService = {
     getAll: async (filters: any = {}): Promise<Course[] & { data: Course[], meta: any }> => {
@@ -106,12 +106,51 @@ export const courseService = {
      * Server-side only — the AI runs in the backend and the result is stored;
      * returns the initial processing state immediately (HTTP 202).
      */
-    processDocument: async (courseId: string, documentUrl?: string | null): Promise<ProcessingState> => {
-        const response = await api.post(`/courses/${courseId}/process`, documentUrl ? { document_url: documentUrl } : {});
+    processDocument: async (courseId: string, documentUrl?: string | null, opts: { review?: boolean } = {}): Promise<ProcessingState> => {
+        const response = await api.post(`/courses/${courseId}/process`, {
+            ...(documentUrl ? { document_url: documentUrl } : {}),
+            ...(opts.review ? { review: true } : {}),
+        });
         if (response.data.success) {
             return response.data.data;
         }
         throw new Error(response.data.message || 'Failed to start document processing');
+    },
+
+    /**
+     * Rebuild the curriculum from the stored ORIGINAL document with a structure request.
+     * The result waits as a draft; nothing students see changes until it is applied.
+     */
+    reprocessDocument: async (courseId: string, options: StructureOptions): Promise<ProcessingState> => {
+        const response = await api.post(`/courses/${courseId}/reprocess`, { structure_options: options });
+        if (response.data.success) {
+            return response.data.data;
+        }
+        throw new Error(response.data.message || 'Failed to start reprocessing');
+    },
+
+    /** The generated curriculum awaiting approval, or null. */
+    getCurriculumDraft: async (courseId: string): Promise<CurriculumDraft | null> => {
+        const response = await api.get(`/courses/${courseId}/draft`);
+        if (response.data.success) {
+            return response.data.data;
+        }
+        throw new Error(response.data.message || 'Failed to fetch the generated curriculum');
+    },
+
+    /** Make the reviewed draft the course's curriculum. */
+    approveCurriculumDraft: async (courseId: string, runId: number, acknowledgeReview: boolean): Promise<void> => {
+        const response = await api.post(`/courses/${courseId}/draft/approve`, { run_id: runId, acknowledge_review: acknowledgeReview });
+        if (!response.data.success) {
+            throw new Error(response.data.message || 'Failed to apply the curriculum');
+        }
+    },
+
+    discardCurriculumDraft: async (courseId: string, runId: number): Promise<void> => {
+        const response = await api.delete(`/courses/${courseId}/draft`, { data: { run_id: runId } });
+        if (!response.data.success) {
+            throw new Error(response.data.message || 'Failed to discard the draft');
+        }
     },
 
     /** Current processing state, or null if the course was never processed. */
