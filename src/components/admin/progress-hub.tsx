@@ -10,6 +10,7 @@ import { ProgressDashboard } from "@/components/courses/structured-questions/Pro
 import { ProblemProgressDashboard } from "@/components/admin/problem-solving/ProblemProgressDashboard";
 import { STRUCTURED_COURSE_TEMPLATE } from "@/types/structured-questions";
 import type { Course } from "@/types/course";
+import { StudentManagementNav } from "@/components/admin/students/student-management";
 
 const PROBLEM_SOLVING_TEMPLATE = "problem-solving";
 
@@ -70,6 +71,7 @@ export function ProgressHub() {
                 <Link href="/admin" className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4">
                     <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Dashboard
                 </Link>
+                <div className="mb-4"><StudentManagementNav active="courses" /></div>
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">

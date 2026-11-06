@@ -176,7 +176,7 @@ export function Header() {
     );
 }
 
-/** Icon-only nav item; its name shows as a tooltip on hover / keyboard focus. */
+/** Nav item: icon + label on wide screens; icon with a hover / focus tooltip below that. */
 function DesktopNavLink({ item, active }: { item: NavItem; active: boolean }) {
     const Icon = item.icon;
     return (
@@ -184,17 +184,18 @@ function DesktopNavLink({ item, active }: { item: NavItem; active: boolean }) {
             href={item.href}
             aria-label={item.label}
             aria-current={active ? 'page' : undefined}
-            className={`group relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
+            className={`group relative flex items-center justify-center gap-2 w-10 h-10 2xl:w-auto 2xl:px-3 rounded-xl text-sm font-medium transition-colors ${
                 active
                     ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
         >
-            <Icon className="w-5 h-5" />
+            <Icon className="w-5 h-5 shrink-0 2xl:w-[18px] 2xl:h-[18px]" />
+            <span className="hidden 2xl:inline whitespace-nowrap">{item.label}</span>
             {active && <span className="absolute -bottom-[13px] left-2 right-2 h-0.5 rounded-full bg-blue-600 dark:bg-blue-400" aria-hidden="true" />}
             <span
                 role="tooltip"
-                className="pointer-events-none absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 dark:bg-gray-700 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 z-50"
+                className="2xl:hidden pointer-events-none absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 dark:bg-gray-700 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 z-50"
             >
                 {item.label}
             </span>

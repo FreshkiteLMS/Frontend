@@ -11,4 +11,8 @@ export interface DashboardStats {
     pendingApprovals?: number;
     paidOrdersLast30Days?: number;
     revenueLast30DaysInr?: number;
+    /** Students with learning activity in the window (summaries). */
+    activeStudentsLast7Days?: number;
+    activeStudentsLast30Days?: number;
+    pendingAttemptRequests?: number;
 }

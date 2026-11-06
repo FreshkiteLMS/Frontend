@@ -1,288 +1,384 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import {
-    ArrowLeft, Users, Video, BarChart3, Plus, ChevronRight,
-    Calendar, TrendingUp, BookOpen, CheckCircle, Clock,
-} from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Calendar, ClipboardCheck, MessageSquare, Plus, Trash2, Video } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { batchService, BatchStudentRow } from '@/services/api/batch.api';
+import { adminInsightsService, httpStatus } from '@/services/api/admin-insights.api';
+import { batchService } from '@/services/api/batch.api';
+import { courseService } from '@/services/api/course.api';
 import { meetingService } from '@/services/api/meeting.api';
+import { apiErrorMessage } from '@/services/api/structured-course.api';
+import type { BatchGroup, BatchOverview, Capabilities } from '@/types/admin-insights';
 import { Meeting, MeetingFeed } from '@/types/meeting';
 import { MeetingCard } from '@/components/meetings/meeting-card';
 import { MeetingForm } from '@/components/meetings/meeting-form';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { StudentDirectory } from '@/components/admin/students/student-directory';
+import {
+    Breadcrumbs, DataNote, EVENT_LABEL, Empty, ErrorState, Figure, Panel, Pill, ProgressBar, SkeletonBlock, TabBar,
+    btnPrimary, btnSecondary, fmtDate, fmtDateTime, fmtRelative, inputCls, useAsync, type TabDef,
+} from '@/components/admin/insights/ui';
+import { BatchAnalyticsView } from './batch-analytics';
+import { AttendanceModal } from './attendance-modal';
+import { CAPABILITY_INFO, CapabilityEditor, GroupsEditor } from './batch-config';
 
-type Tab = 'students' | 'meetings' | 'analytics';
+type Tab = 'overview' | 'students' | 'analytics' | 'meetings' | 'groups' | 'settings';
+const TABS: Tab[] = ['overview', 'students', 'analytics', 'meetings', 'groups', 'settings'];
 
 export function BatchDetail({ batchId }: { batchId: string }) {
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const initialTab = (searchParams.get('tab') as Tab) || 'students';
-    const [tab, setTab] = useState<Tab>(
-        ['students', 'meetings', 'analytics'].includes(initialTab) ? initialTab : 'students'
-    );
-    const [batch, setBatch] = useState<any>(null);
-    const [students, setStudents] = useState<BatchStudentRow[]>([]);
-    const [feed, setFeed] = useState<MeetingFeed>({ upcoming: [], past: [] });
-    const [rawMeetings, setRawMeetings] = useState<Meeting[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
-    const [editing, setEditing] = useState<Meeting | null>(null);
+    const pathname = usePathname();
+    const sp = useSearchParams();
+    const requested = sp.get('tab') as Tab;
+    const overview = useAsync(() => adminInsightsService.batchOverview(batchId), `bo:${batchId}`);
+    const o = overview.data;
+    const meetingsOn = o?.capabilities.meetings ?? true;
+    const tab: Tab = TABS.includes(requested) && !(requested === 'meetings' && o && !meetingsOn) ? requested : 'overview';
 
-    const loadMeetings = useCallback(async () => {
-        const [f, raw] = await Promise.all([
-            meetingService.getBatchMeetingFeed(batchId).catch(() => ({ upcoming: [], past: [] })),
-            meetingService.getBatchMeetings(batchId).catch(() => []),
-        ]);
-        setFeed(f);
-        setRawMeetings(raw);
-    }, [batchId]);
-
-    const loadAll = useCallback(async () => {
-        try {
-            setLoading(true);
-            const [b, s] = await Promise.all([
-                batchService.getById(batchId).catch(() => null),
-                batchService.getStudents(batchId).catch(() => []),
-            ]);
-            setBatch(b);
-            setStudents(s);
-            await loadMeetings();
-        } catch (err) {
-            console.error('Failed to load batch detail', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [batchId, loadMeetings]);
-
-    useEffect(() => { loadAll(); }, [loadAll]);
-
-    const handleEdit = (meetingId: string) => {
-        const m = rawMeetings.find(r => r.id === meetingId) || null;
-        setEditing(m);
-        setShowForm(true);
+    const setTab = (t: Tab) => {
+        // Directory filters belong to the Students tab; drop them when leaving it.
+        const next = new URLSearchParams();
+        if (t !== 'overview') next.set('tab', t);
+        router.replace(`${pathname}${next.toString() ? `?${next}` : ''}`, { scroll: false });
     };
 
-    const handleCancel = async (meetingId: string) => {
-        if (!confirm('Cancel this meeting? Students will be notified.')) return;
-        try {
-            await meetingService.cancel(meetingId);
-            toast.success('Meeting cancelled');
-            loadMeetings();
-        } catch { toast.error('Failed to cancel meeting'); }
-    };
-
-    const handleDelete = async (meetingId: string) => {
-        if (!confirm('Delete this meeting permanently? Students will be notified.')) return;
-        try {
-            await meetingService.remove(meetingId);
-            toast.success('Meeting deleted');
-            loadMeetings();
-        } catch { toast.error('Failed to delete meeting'); }
-    };
-
-    // Derived analytics (client-side, no extra endpoint).
-    const avgProgress = students.length
-        ? Math.round(students.reduce((s, x) => s + x.progress, 0) / students.length)
-        : 0;
-    const completed = students.filter(s => s.progress === 100).length;
-    const active = students.filter(s => s.progress > 0 && s.progress < 100).length;
-    const notStarted = students.filter(s => s.progress === 0).length;
-
-    const tabs: { id: Tab; label: string; icon: any; count?: number }[] = [
-        { id: 'students', label: 'Students', icon: Users, count: students.length },
-        { id: 'meetings', label: 'Meetings', icon: Video, count: rawMeetings.length },
-        { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    const tabs: TabDef<Tab>[] = [
+        { id: 'overview', label: 'Overview' },
+        { id: 'students', label: 'Students', count: o?.counts.students ?? null },
+        { id: 'analytics', label: 'Analytics' },
+        { id: 'meetings', label: 'Meetings', hidden: !meetingsOn, count: o?.meetings?.scheduled ?? null },
+        { id: 'groups', label: 'Communication groups', count: o?.counts.groups ?? null },
+        { id: 'settings', label: 'Settings' },
     ];
 
     return (
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <button onClick={() => router.push('/admin/batches')} className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4 transition-colors">
-                <ArrowLeft className="w-5 h-5" /> Back to Batches
-            </button>
-
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{batch?.name || (loading ? 'Loading…' : 'Batch')}</h1>
-                    {batch && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-3">
-                            <span>{batch.batch_number}</span>
-                            {batch.start_date && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{new Date(batch.start_date).toLocaleDateString()}</span>}
-                        </p>
-                    )}
-                </div>
-                {tab === 'meetings' && (
-                    <button onClick={() => { setEditing(null); setShowForm(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors">
-                        <Plus className="w-4 h-4" /> Schedule Meeting
-                    </button>
-                )}
-            </div>
-
-            {/* Tabs */}
-            <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-6">
-                {tabs.map(t => (
-                    <button key={t.id} onClick={() => setTab(t.id)}
-                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                            tab === t.id ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                        }`}>
-                        <t.icon className="w-4 h-4" /> {t.label}
-                        {t.count !== undefined && <span className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full">{t.count}</span>}
-                    </button>
-                ))}
-            </div>
-
-            {loading ? (
-                <div className="space-y-3">
-                    {[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-gray-100 dark:bg-gray-900 rounded-xl animate-pulse" />)}
-                </div>
-            ) : (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <Breadcrumbs items={[{ label: 'Batches', href: '/admin/batches' }, { label: o?.batch.name ?? 'Batch' }]} />
+            {overview.error ? <ErrorState error={overview.error} onRetry={overview.reload} /> : !o ? <SkeletonBlock rows={4} /> : (
                 <>
-                    {/* STUDENTS */}
-                    {tab === 'students' && (
-                        students.length === 0 ? (
-                            <EmptyState icon={<Users className="w-10 h-10" />} title="No students yet" subtitle="Assign students from Batch Management." />
-                        ) : (
-                            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
-                                            <tr>
-                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Student</th>
-                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
-                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Courses</th>
-                                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Progress</th>
-                                                <th className="px-4 py-3" />
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                            {students.map(s => (
-                                                <tr key={s.id} onClick={() => router.push(`/admin/students/${s.id}`)} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer transition-colors">
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">{s.name.charAt(0).toUpperCase()}</div>
-                                                            <span className="text-sm font-medium text-gray-900 dark:text-white">{s.name}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{s.email}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{s.coursesAssigned}</td>
-                                                    <td className="px-4 py-3 w-44">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden min-w-[60px]">
-                                                                <div className="h-full bg-blue-600 rounded-full" style={{ width: `${s.progress}%` }} />
-                                                            </div>
-                                                            <span className="text-xs text-gray-500 w-9 text-right">{s.progress}%</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right"><ChevronRight className="w-4 h-4 text-gray-300 inline" /></td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{o.batch.name}</h1>
+                                <Pill tone={o.batch.status === 'active' ? 'active' : 'neutral'}>{o.batch.status}</Pill>
+                                {o.batch.batchType && <Pill tone="info">{o.batch.batchType}</Pill>}
+                                {!meetingsOn && <Pill tone="neutral">Meetings off</Pill>}
                             </div>
-                        )
-                    )}
-
-                    {/* MEETINGS */}
-                    {tab === 'meetings' && (
-                        <div className="space-y-6">
-                            <div>
-                                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-400 mb-3">Upcoming</h3>
-                                {feed.upcoming.length === 0 ? (
-                                    <EmptyState icon={<Video className="w-10 h-10" />} title="No upcoming meetings" subtitle="Schedule a one-time or recurring meeting for this batch." />
-                                ) : (
-                                    <div className="space-y-3">
-                                        {feed.upcoming.map((m, i) => (
-                                            <MeetingCard key={`${m.id}-${i}`} occ={m} variant="upcoming" showBatch={false}
-                                                onEdit={handleEdit} onCancel={handleCancel} onDelete={handleDelete} />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            {feed.past.length > 0 && (
-                                <div>
-                                    <h3 className="text-sm font-bold uppercase tracking-wide text-gray-400 mb-3">Past</h3>
-                                    <div className="space-y-3">
-                                        {feed.past.slice(0, 10).map((m, i) => (
-                                            <MeetingCard key={`${m.id}-${i}`} occ={m} variant="past" showBatch={false} onDelete={handleDelete} />
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                            <p className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                                <span className="font-mono text-xs">{o.batch.batchNumber}</span>
+                                <span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5" aria-hidden="true" />{fmtDate(o.batch.startDate)}{o.batch.endDate ? ` – ${fmtDate(o.batch.endDate)}` : ''}</span>
+                            </p>
                         </div>
+                    </div>
+                    <TabBar tabs={tabs} active={tab} onChange={setTab} label="Batch sections" />
+                    {tab === 'overview' && <OverviewTab o={o} onTab={setTab} />}
+                    {tab === 'students' && <StudentDirectory scope={{ batchId, batchName: o.batch.name }} onMembershipChanged={overview.reload} />}
+                    {tab === 'analytics' && <BatchAnalyticsView batchId={batchId} />}
+                    {tab === 'meetings' && meetingsOn && <MeetingsTab batchId={batchId} onChanged={overview.reload} />}
+                    {tab === 'groups' && <GroupsTab o={o} onSaved={overview.reload} />}
+                    {tab === 'settings' && <SettingsTab o={o} onSaved={overview.reload} />}
+                </>
+            )}
+        </div>
+    );
+}
+
+/* ───────────── Overview ───────────── */
+
+function OverviewTab({ o, onTab }: { o: BatchOverview; onTab: (t: Tab) => void }) {
+    const caps = o.capabilities;
+    return (
+        <div className="grid gap-5 lg:grid-cols-3">
+            <div className="space-y-5 lg:col-span-2">
+                <Panel title="Condition of the batch">
+                    {o.actions.length === 0 ? <p className="text-sm text-gray-600 dark:text-gray-400">Nothing needs action by the current rules.</p> : (
+                        <ul className="space-y-1.5 text-sm text-gray-800 dark:text-gray-200">
+                            {o.actions.map(a => <li key={a} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />{a}</li>)}
+                        </ul>
                     )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        <button type="button" onClick={() => onTab('analytics')} className={btnSecondary}>Students needing attention</button>
+                        <button type="button" onClick={() => onTab('students')} className={btnSecondary}>Open student list</button>
+                    </div>
+                </Panel>
+                <Panel title="Learning">
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                        <Figure label="Students" value={o.counts.students} sub={`${o.counts.active} active · ${o.counts.inactive} inactive (${o.rules.inactiveDays}d)`} />
+                        <Figure label="Average progress" value={o.progress.average !== null ? `${Math.round(o.progress.average)}%` : '—'} sub="student-app formula" />
+                        <Figure label="Course completion" value={o.progress.averageCourseCompletion !== null ? `${Math.round(o.progress.averageCourseCompletion)}%` : '—'} sub={`${o.progress.studentsCompletedAll} finished every course`} />
+                        <Figure label="Courses" value={o.counts.courses} />
+                    </div>
+                    <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                        {caps.assignments && <div><p className="mb-1 text-xs text-gray-500">Assignments finished · {o.assignments.finished}/{o.assignments.total}</p><ProgressBar value={o.assignments.rate} label="Assignments finished" /></div>}
+                        {caps.audio_practice && <div><p className="mb-1 text-xs text-gray-500">Audio questions practised · {o.audio.practised}/{o.audio.questions}</p><ProgressBar value={o.audio.rate} label="Audio practised" /></div>}
+                        {caps.problem_solving && <div><p className="mb-1 text-xs text-gray-500">Problems solved</p><p className="text-sm text-gray-800 dark:text-gray-200">{o.problems.solved} solved by {o.problems.studentsSolving} students</p></div>}
+                    </div>
+                    {o.courses.length > 0 && (
+                        <ul className="mt-5 flex flex-wrap gap-2">
+                            {o.courses.map(c => <li key={c.id} className="rounded-lg bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300">{c.title}{c.status !== 'active' ? ` (${c.status})` : ''}</li>)}
+                        </ul>
+                    )}
+                </Panel>
+                <Panel title="Recent activity in this batch">
+                    {o.recentActivity.length === 0 ? <p className="text-sm text-gray-500">No recorded learning activity yet.</p> : (
+                        <ul className="space-y-2 text-sm">
+                            {o.recentActivity.map((e, i) => (
+                                <li key={i} className="flex gap-3">
+                                    <span className="min-w-0 flex-1">
+                                        <Link href={`/admin/students/${e.userId}?batch=${o.batch.id}`} className="font-medium text-gray-900 dark:text-white hover:underline">{e.student}</Link>
+                                        <span className="text-gray-600 dark:text-gray-400"> · {EVENT_LABEL[e.type] ?? e.type}{e.title ? ` “${e.title}”` : ''}{e.courseTitle ? ` — ${e.courseTitle}` : ''}{typeof e.score === 'number' ? ` · ${e.score}${e.type === 'assessment_submitted' ? '%' : '/10'}` : ''}</span>
+                                    </span>
+                                    <time className="shrink-0 text-xs text-gray-500">{fmtRelative(e.at)}</time>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </Panel>
+            </div>
+            <div className="space-y-5">
+                {o.batch.description && <Panel title="About"><p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{o.batch.description}</p></Panel>}
+                <Panel title="Configuration" actions={<button type="button" onClick={() => onTab('settings')} className="text-sm text-blue-600 hover:underline">Edit</button>}>
+                    <ul className="space-y-1.5 text-sm">
+                        {CAPABILITY_INFO.map(c => <li key={c.key} className="flex justify-between gap-2"><span className="text-gray-600 dark:text-gray-400">{c.label}</span><span className={caps[c.key] ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{caps[c.key] ? 'On' : 'Off'}</span></li>)}
+                    </ul>
+                    {o.batch.legacyConfig.capabilities && <div className="mt-3"><DataNote>Created before batch capabilities existed — everything stays on, exactly as before, until changed in Settings.</DataNote></div>}
+                </Panel>
+                {o.meetings && (
+                    <Panel title="Meetings" actions={<button type="button" onClick={() => onTab('meetings')} className="text-sm text-blue-600 hover:underline">Manage</button>}>
+                        <p className="text-sm text-gray-700 dark:text-gray-300">{o.meetings.scheduled} scheduled ({o.meetings.recurring} recurring) · {o.meetings.cancelled} cancelled</p>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{o.meetings.next ? <>Next: <strong>{o.meetings.next.title}</strong> · {fmtDateTime(o.meetings.next.start)}</> : 'Nothing upcoming in the next 60 days.'}</p>
+                    </Panel>
+                )}
+                <Panel title="Communication groups" actions={<button type="button" onClick={() => onTab('groups')} className="text-sm text-blue-600 hover:underline">Manage</button>}>
+                    {o.groups.filter(g => !g.archived).length === 0 ? <p className="text-sm text-gray-500">No groups.</p> : (
+                        <ul className="space-y-1.5 text-sm">
+                            {o.groups.filter(g => !g.archived).map(g => (
+                                <li key={g.key} className="flex items-center justify-between gap-2">
+                                    <span className="min-w-0 truncate text-gray-800 dark:text-gray-200">{g.name}</span>
+                                    {g.conversation_id ? <Link href={`/chat/${g.conversation_id}`} className="shrink-0 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"><MessageSquare className="h-3 w-3" aria-hidden="true" />{g.member_count ?? 0}</Link> : <span className="text-xs text-gray-400">not created yet</span>}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </Panel>
+            </div>
+        </div>
+    );
+}
 
-                    {/* ANALYTICS */}
-                    {tab === 'analytics' && (
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                <AnalyticCard icon={<Users className="w-5 h-5 text-blue-500" />} label="Total Students" value={students.length} />
-                                <AnalyticCard icon={<TrendingUp className="w-5 h-5 text-purple-500" />} label="Avg Progress" value={`${avgProgress}%`} />
-                                <AnalyticCard icon={<Video className="w-5 h-5 text-indigo-500" />} label="Meetings" value={rawMeetings.length} />
-                                <AnalyticCard icon={<CheckCircle className="w-5 h-5 text-green-500" />} label="Completed" value={completed} />
-                            </div>
+/* ───────────── Meetings (existing workflows + attendance) ───────────── */
 
-                            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
-                                <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Progress Distribution</h3>
-                                <div className="space-y-4">
-                                    <DistRow label="Completed" value={completed} total={students.length} color="bg-green-500" icon={<CheckCircle className="w-4 h-4 text-green-500" />} />
-                                    <DistRow label="In Progress" value={active} total={students.length} color="bg-blue-500" icon={<Clock className="w-4 h-4 text-blue-500" />} />
-                                    <DistRow label="Not Started" value={notStarted} total={students.length} color="bg-gray-400" icon={<BookOpen className="w-4 h-4 text-gray-400" />} />
-                                </div>
-                            </div>
+function MeetingsTab({ batchId, onChanged }: { batchId: string; onChanged: () => void }) {
+    const [feed, setFeed] = useState<MeetingFeed>({ upcoming: [], past: [] });
+    const [rawMeetings, setRawMeetings] = useState<Meeting[]>([]);
+    const [counts, setCounts] = useState<Map<string, { recorded: number; attended: number }>>(new Map());
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<unknown>(null);
+    const [showForm, setShowForm] = useState(false);
+    const [editing, setEditing] = useState<Meeting | null>(null);
+    const [attendance, setAttendance] = useState<{ meetingId: string; start: string } | null>(null);
+    const [confirm, setConfirm] = useState<{ kind: 'cancel' | 'delete'; id: string } | null>(null);
 
-                            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
-                                <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Meeting Cadence</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                    {feed.upcoming.length} upcoming · {feed.past.length} held in the last 60 days ·{' '}
-                                    {rawMeetings.filter(m => m.type === 'recurring').length} recurring series
-                                </p>
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const [f, raw, c] = await Promise.all([
+                meetingService.getBatchMeetingFeed(batchId),
+                meetingService.getBatchMeetings(batchId),
+                adminInsightsService.attendanceCounts(batchId).catch(() => []),
+            ]);
+            setFeed(f);
+            setRawMeetings(raw);
+            setCounts(new Map(c.map(x => [`${x.meetingId}:${x.start}`, x])));
+            setError(null);
+        } catch (err) { setError(err); } finally { setLoading(false); }
+    }, [batchId]);
+    useEffect(() => { void load(); }, [load]);
+
+    const act = async () => {
+        if (!confirm) return;
+        try {
+            if (confirm.kind === 'cancel') { await meetingService.cancel(confirm.id); toast.success('Meeting cancelled'); }
+            else { await meetingService.remove(confirm.id); toast.success('Meeting deleted'); }
+            setConfirm(null);
+            void load();
+            onChanged();
+        } catch (err) { toast.error(apiErrorMessage(err, 'That did not work')); }
+    };
+
+    if (error) return <ErrorState error={error} onRetry={load} />;
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-end">
+                <button type="button" onClick={() => { setEditing(null); setShowForm(true); }} className={btnPrimary}><Plus className="h-4 w-4" aria-hidden="true" /> Schedule meeting</button>
+            </div>
+            {loading ? <SkeletonBlock rows={3} /> : (
+                <>
+                    <section>
+                        <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-400">Upcoming</h3>
+                        {feed.upcoming.length === 0 ? <Empty icon={<Video className="h-10 w-10" />} title="No upcoming meetings">Schedule a one-time or recurring meeting for this batch.</Empty> : (
+                            <div className="space-y-3">
+                                {feed.upcoming.map((m, i) => (
+                                    <MeetingCard key={`${m.id}-${i}`} occ={m} variant="upcoming" showBatch={false}
+                                        onEdit={id => { setEditing(rawMeetings.find(r => r.id === id) ?? null); setShowForm(true); }}
+                                        onCancel={id => setConfirm({ kind: 'cancel', id })} onDelete={id => setConfirm({ kind: 'delete', id })} />
+                                ))}
                             </div>
-                        </div>
+                        )}
+                    </section>
+                    {feed.past.length > 0 && (
+                        <section>
+                            <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-400">Past (last 60 days)</h3>
+                            <div className="space-y-3">
+                                {feed.past.slice(0, 20).map((m, i) => {
+                                    const c = counts.get(`${m.id}:${new Date(m.start).toISOString()}`);
+                                    return (
+                                        <div key={`${m.id}-${i}`}>
+                                            <MeetingCard occ={m} variant="past" showBatch={false} onDelete={id => setConfirm({ kind: 'delete', id })} />
+                                            <div className="mt-1 flex items-center justify-end gap-2 text-xs">
+                                                <span className="text-gray-500">{c ? `Attendance: ${c.attended}/${c.recorded} recorded present` : 'Attendance not recorded'}</span>
+                                                <button type="button" onClick={() => setAttendance({ meetingId: m.id, start: new Date(m.start).toISOString() })} className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:underline">
+                                                    <ClipboardCheck className="h-3.5 w-3.5" aria-hidden="true" /> {c ? 'Edit attendance' : 'Record attendance'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
                     )}
                 </>
             )}
+            {showForm && <MeetingForm batchId={batchId} existing={editing} onClose={() => { setShowForm(false); setEditing(null); }} onSaved={() => { void load(); onChanged(); }} />}
+            {attendance && <AttendanceModal meetingId={attendance.meetingId} occurrence={attendance.start} onClose={() => setAttendance(null)} onSaved={load} />}
+            <ConfirmDialog
+                open={!!confirm}
+                title={confirm?.kind === 'cancel' ? 'Cancel this meeting?' : 'Delete this meeting?'}
+                message={confirm?.kind === 'cancel' ? 'Students will be notified. The meeting stays in history as cancelled.' : 'This removes the meeting permanently and notifies students. Recorded attendance is kept.'}
+                confirmLabel={confirm?.kind === 'cancel' ? 'Cancel meeting' : 'Delete'}
+                onConfirm={act}
+                onCancel={() => setConfirm(null)}
+            />
+        </div>
+    );
+}
 
-            {showForm && (
-                <MeetingForm batchId={batchId} existing={editing} onClose={() => { setShowForm(false); setEditing(null); }} onSaved={loadMeetings} />
+/* ───────────── Groups ───────────── */
+
+function GroupsTab({ o, onSaved }: { o: BatchOverview; onSaved: () => void }) {
+    const [groups, setGroups] = useState<BatchGroup[]>(o.groups);
+    const [saving, setSaving] = useState(false);
+    useEffect(() => { setGroups(o.groups); }, [o.groups]);
+    const save = async () => {
+        if (groups.some(g => !g.name.trim())) { toast.error('Every group needs a name'); return; }
+        setSaving(true);
+        try {
+            await adminInsightsService.saveGroups(o.batch.id, groups.map(({ key, template, name, description, audience, who_can_post, archived }) => ({ key, template, name, description, audience, who_can_post, archived })));
+            toast.success('Communication groups saved');
+            onSaved();
+        } catch (err) { toast.error(apiErrorMessage(err, 'Groups were not saved')); } finally { setSaving(false); }
+    };
+    return (
+        <div className="space-y-5">
+            <Panel title="Communication groups" subtitle="Each group is a chat channel for this batch, using the LMS chat. Membership follows the batch automatically.">
+                {o.batch.legacyConfig.groups && <div className="mb-3"><DataNote>This batch has the original single General channel. Its messages are kept; saving here keeps that channel and adds any new groups.</DataNote></div>}
+                <GroupsEditor value={groups} onChange={setGroups} meetingsEnabled={o.capabilities.meetings} existingKeys={o.groups.map(g => g.key)} />
+                <div className="mt-4 flex justify-end"><button type="button" className={btnPrimary} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save groups'}</button></div>
+            </Panel>
+            {o.groups.some(g => g.conversation_id) && (
+                <Panel title="Open a group">
+                    <ul className="flex flex-wrap gap-2">
+                        {o.groups.filter(g => g.conversation_id).map(g => (
+                            <li key={g.key}><Link href={`/chat/${g.conversation_id}`} className={btnSecondary}><MessageSquare className="h-4 w-4" aria-hidden="true" />{g.name}{g.archived ? ' (archived)' : ''} · {g.member_count ?? 0}</Link></li>
+                        ))}
+                    </ul>
+                </Panel>
             )}
         </div>
     );
 }
 
-function AnalyticCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
-    return (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5">
-            <div className="mb-2">{icon}</div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none">{value}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{label}</p>
-        </div>
-    );
-}
+/* ───────────── Settings ───────────── */
 
-function DistRow({ label, value, total, color, icon }: { label: string; value: number; total: number; color: string; icon: React.ReactNode }) {
-    const pct = total > 0 ? Math.round((value / total) * 100) : 0;
-    return (
-        <div>
-            <div className="flex items-center justify-between text-sm mb-1.5">
-                <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">{icon}{label}</span>
-                <span className="text-gray-500">{value} ({pct}%)</span>
-            </div>
-            <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
-            </div>
-        </div>
-    );
-}
+function SettingsTab({ o, onSaved }: { o: BatchOverview; onSaved: () => void }) {
+    const router = useRouter();
+    const [name, setName] = useState(o.batch.name);
+    const [description, setDescription] = useState(o.batch.description);
+    const [batchType, setBatchType] = useState(o.batch.batchType ?? '');
+    const [status, setStatus] = useState(o.batch.status);
+    const [startDate, setStartDate] = useState(o.batch.startDate ? o.batch.startDate.slice(0, 10) : '');
+    const [endDate, setEndDate] = useState(o.batch.endDate ? o.batch.endDate.slice(0, 10) : '');
+    const [caps, setCaps] = useState<Capabilities>(o.capabilities);
+    const [courseIds, setCourseIds] = useState<string[]>(o.courses.map(c => c.id));
+    const [saving, setSaving] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const courses = useAsync(() => courseService.getAllCourses({}), 'settings-courses');
+    const scheduled = o.meetings?.scheduled ?? 0;
 
-function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
+    const save = async () => {
+        if (!name.trim()) { toast.error('Enter a name'); return; }
+        if (endDate && startDate && endDate < startDate) { toast.error('The end date is before the start date'); return; }
+        setSaving(true);
+        try {
+            await batchService.update(o.batch.id, {
+                name: name.trim(), description, batch_type: batchType.trim() || null, status,
+                start_date: startDate, end_date: endDate || null, capabilities: caps, course_ids: caps.courses ? courseIds : [],
+            });
+            toast.success('Batch settings saved');
+            onSaved();
+        } catch (err) {
+            toast.error(httpStatus(err) === 409 ? apiErrorMessage(err, 'Cancel the scheduled meetings first') : apiErrorMessage(err, 'Settings were not saved'));
+        } finally { setSaving(false); }
+    };
+    const remove = async () => {
+        setDeleting(true);
+        try {
+            await batchService.delete(o.batch.id);
+            toast.success('Batch deleted');
+            router.push('/admin/batches');
+        } catch (err) { toast.error(apiErrorMessage(err, 'The batch was not deleted')); setDeleting(false); }
+    };
+
     return (
-        <div className="p-12 text-center bg-white dark:bg-gray-900 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
-            <div className="text-gray-200 dark:text-gray-700 flex justify-center mb-3">{icon}</div>
-            <p className="font-medium text-gray-700 dark:text-gray-300">{title}</p>
-            <p className="text-sm text-gray-400 mt-1">{subtitle}</p>
+        <div className="space-y-5">
+            <Panel title="Basic information">
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm text-gray-700 dark:text-gray-300">Name<input className={`${inputCls} mt-1 w-full`} value={name} maxLength={120} onChange={e => setName(e.target.value)} /></label>
+                    <label className="text-sm text-gray-700 dark:text-gray-300">Category / type<input className={`${inputCls} mt-1 w-full`} value={batchType} maxLength={60} onChange={e => setBatchType(e.target.value)} /></label>
+                    <label className="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">Description<textarea rows={3} className={`${inputCls} mt-1 w-full`} value={description} maxLength={2000} onChange={e => setDescription(e.target.value)} /></label>
+                    <label className="text-sm text-gray-700 dark:text-gray-300">Start date<input type="date" className={`${inputCls} mt-1 w-full`} value={startDate} onChange={e => setStartDate(e.target.value)} /></label>
+                    <label className="text-sm text-gray-700 dark:text-gray-300">End date<input type="date" className={`${inputCls} mt-1 w-full`} value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} /></label>
+                    <label className="text-sm text-gray-700 dark:text-gray-300">Status
+                        <select className={`${inputCls} mt-1 w-full`} value={status} onChange={e => setStatus(e.target.value)}><option value="active">Active</option><option value="archived">Archived</option></select>
+                    </label>
+                </div>
+            </Panel>
+            <Panel title="Capabilities">
+                <CapabilityEditor value={caps} onChange={setCaps} lockMeetingsOff={scheduled > 0 ? `${scheduled} scheduled meeting${scheduled === 1 ? '' : 's'} — cancel or delete ${scheduled === 1 ? 'it' : 'them'} in the Meetings tab before switching meetings off.` : null} />
+            </Panel>
+            {caps.courses && (
+                <Panel title="Courses" subtitle="Members get access to these courses. Removing a course removes batch-based access only; progress is kept.">
+                    <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 rounded-lg border border-gray-100 dark:border-gray-800">
+                        {(courses.data ?? []).filter(c => c.id).map(c => (
+                            <label key={c.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                                <input type="checkbox" className="h-4 w-4 rounded border-gray-300" checked={courseIds.includes(c.id!)} onChange={() => setCourseIds(ids => ids.includes(c.id!) ? ids.filter(x => x !== c.id) : [...ids, c.id!])} />
+                                <span className="flex-1 text-gray-800 dark:text-gray-200">{c.title}</span>
+                            </label>
+                        ))}
+                    </div>
+                </Panel>
+            )}
+            <Panel title="Membership"><p className="text-sm text-gray-600 dark:text-gray-400">Add or remove students from the <Link href={`/admin/batches/${o.batch.id}?tab=students`} className="text-blue-600 hover:underline">Students tab</Link>. A student can belong to several batches; removing them from this one never affects the others or their learning history.</p></Panel>
+            <div className="flex flex-wrap justify-between gap-2">
+                <button type="button" onClick={() => setConfirmDelete(true)} className={`${btnSecondary} text-red-600 dark:text-red-400`}><Trash2 className="h-4 w-4" aria-hidden="true" /> Delete batch</button>
+                <button type="button" onClick={save} disabled={saving} className={btnPrimary}>{saving ? 'Saving…' : 'Save settings'}</button>
+            </div>
+            <ConfirmDialog open={confirmDelete} title="Delete this batch?" busy={deleting}
+                message={<>Delete <strong>{o.batch.name}</strong>? Students lose batch-based course access. Their learning history, messages and other batches are not deleted.</>}
+                confirmLabel="Delete batch" onConfirm={remove} onCancel={() => setConfirmDelete(false)} />
         </div>
     );
 }

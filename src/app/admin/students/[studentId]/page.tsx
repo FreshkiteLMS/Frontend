@@ -1,8 +1,8 @@
 "use client";
 
-import { use } from 'react';
+import { use, Suspense } from 'react';
 import { Header } from '@/components/layout/header';
-import { StudentDetail } from '@/components/students/student-detail';
+import { Student360 } from '@/components/admin/students/student-360';
 
 interface PageProps {
     params: Promise<{ studentId: string }>;
@@ -13,7 +13,9 @@ export default function AdminStudentDetailPage({ params }: PageProps) {
     return (
         <>
             <Header />
-            <StudentDetail studentId={studentId} />
+            <Suspense>
+                <Student360 studentId={studentId} />
+            </Suspense>
         </>
     );
 }

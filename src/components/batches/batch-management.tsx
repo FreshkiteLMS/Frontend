@@ -15,11 +15,8 @@ import { Student } from '@/types/student';
 
 export function BatchManagement() {
     const router = useRouter();
-    const [view, setView] = useState<'list' | 'create' | 'assign'>('list');
-    const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
-    const [newBatchName, setNewBatchName] = useState('');
-    const [newBatchStartDate, setNewBatchStartDate] = useState('');
-    const [batchSearchQuery, setBatchSearchQuery] = useState('');
+    const [view, setView] = useState<'list' | 'assign'>('list');
+    const [selectedBatch, setSelectedBatch] = useState<string | null>(null);    const [batchSearchQuery, setBatchSearchQuery] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
 
@@ -28,20 +25,11 @@ export function BatchManagement() {
     const [loading, setLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const searchParams = useSearchParams();
-    const editUrlParam = searchParams.get('edit');
-    const [editId, setEditId] = useState<string | null>(null);
-
+    const editUrlParam = searchParams.get('edit');
     useEffect(() => {
-        if (editUrlParam) {
-            const batchToEdit = batches.find(b => b.id === editUrlParam);
-            if (batchToEdit) {
-                setEditId(editUrlParam);
-                setNewBatchName(batchToEdit.name);
-                setNewBatchStartDate(batchToEdit.startDate ? new Date(batchToEdit.startDate).toISOString().split('T')[0] : '');
-                setView('create');
-            }
-        }
-    }, [editUrlParam, batches]);
+        // Editing lives in the batch's Settings tab (name, dates, capabilities, courses).
+        if (editUrlParam) router.replace(`/admin/batches/${editUrlParam}?tab=settings`);
+    }, [editUrlParam, router]);
 
     const fetchData = async () => {
         try {
@@ -63,39 +51,6 @@ export function BatchManagement() {
         fetchData();
     }, []);
 
-    const handleCreateBatch = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            setIsSubmitting(true);
-            if (editId) {
-                await batchService.update(editId, {
-                    name: newBatchName,
-                    startDate: newBatchStartDate
-                });
-                toast.success(`Batch "${newBatchName}" updated successfully`);
-            } else {
-                await batchService.create({
-                    name: newBatchName,
-                    startDate: newBatchStartDate
-                });
-                toast.success(`Batch "${newBatchName}" created successfully`);
-            }
-            setNewBatchName('');
-            setNewBatchStartDate('');
-            setEditId(null);
-            if (editUrlParam) {
-                router.push('/admin/batches');
-            }
-            setView('list');
-            fetchData(); // Refresh list
-        } catch (error) {
-            console.error('Failed to save batch:', error);
-            toast.error('Failed to save batch. Please try again.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     const handleDeleteBatch = async (id: string, name: string) => {
         if (window.confirm(`Are you sure you want to delete the batch "${name}"?`)) {
             try {
@@ -110,10 +65,7 @@ export function BatchManagement() {
     };
 
     const handleEditClick = (batch: Batch) => {
-        setEditId(batch.id);
-        setNewBatchName(batch.name);
-        setNewBatchStartDate(batch.startDate ? new Date(batch.startDate).toISOString().split('T')[0] : '');
-        setView('create');
+        router.push(`/admin/batches/${batch.id}?tab=settings`);
     };
 
     const handleAssignStudents = async () => {
@@ -177,7 +129,7 @@ export function BatchManagement() {
                                 <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             </form>
                             <button
-                                onClick={() => setView('create')}
+                                onClick={() => router.push('/admin/batches/new')}
                                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                             >
                                 <Plus className="w-5 h-5" />
@@ -227,6 +179,9 @@ export function BatchManagement() {
                                                 }`}>
                                                     {batch.status || 'active'}
                                                 </span>
+                                                {batch.capabilities && !batch.capabilities.meetings && (
+                                                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500">No meetings</span>
+                                                )}
                                             </div>
                                             {batch.description ? (
                                                 <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1">{batch.description}</p>
@@ -256,8 +211,10 @@ export function BatchManagement() {
                                     {/* Stat tiles */}
                                     <div className="grid grid-cols-3 gap-2 mt-4">
                                         <StatTile icon={<Users className="w-4 h-4 text-blue-500" />} value={batch.students} label="Students" />
-                                        <StatTile icon={<UserCheck className="w-4 h-4 text-green-500" />} value={batch.activeStudents ?? 0} label="Active" />
-                                        <StatTile icon={<Video className="w-4 h-4 text-indigo-500" />} value={batch.meetingsScheduled ?? 0} label="Meetings" />
+                                        <StatTile icon={<UserCheck className="w-4 h-4 text-green-500" />} value={batch.activeStudents ?? 0} label="Active 14d" />
+                                        {batch.capabilities && !batch.capabilities.meetings
+                                            ? <StatTile icon={<Layers className="w-4 h-4 text-indigo-500" />} value={batch.groupCount ?? 0} label="Groups" />
+                                            : <StatTile icon={<Video className="w-4 h-4 text-indigo-500" />} value={batch.meetingsScheduled ?? 0} label="Meetings" />}
                                     </div>
 
                                     {/* Progress overview */}
@@ -272,7 +229,7 @@ export function BatchManagement() {
                                             <div className="h-full bg-blue-600 rounded-full transition-all" style={{ width: `${batch.progress || 0}%` }} />
                                         </div>
                                         <p className="text-[11px] text-gray-400 mt-1.5">
-                                            {batch.completionRate ?? 0}% completion rate
+                                            {batch.completionRate ?? 0}% finished all their courses
                                             {batch.recurringMeetings ? ` · ${batch.recurringMeetings} recurring` : ''}
                                         </p>
                                     </div>
@@ -281,7 +238,9 @@ export function BatchManagement() {
                                 {/* Quick actions */}
                                 <div className="flex items-center divide-x divide-gray-100 dark:divide-gray-700 border-t border-gray-100 dark:border-gray-700">
                                     <QuickAction icon={<Users className="w-4 h-4" />} label="Students" onClick={() => router.push(`/admin/batches/${batch.id}?tab=students`)} />
-                                    <QuickAction icon={<Video className="w-4 h-4" />} label="Meetings" onClick={() => router.push(`/admin/batches/${batch.id}?tab=meetings`)} />
+                                    {batch.capabilities && !batch.capabilities.meetings
+                                        ? <QuickAction icon={<Layers className="w-4 h-4" />} label="Groups" onClick={() => router.push(`/admin/batches/${batch.id}?tab=groups`)} />
+                                        : <QuickAction icon={<Video className="w-4 h-4" />} label="Meetings" onClick={() => router.push(`/admin/batches/${batch.id}?tab=meetings`)} />}
                                     <QuickAction icon={<BarChart3 className="w-4 h-4" />} label="Analytics" onClick={() => router.push(`/admin/batches/${batch.id}?tab=analytics`)} />
                                     <QuickAction icon={<UserPlus className="w-4 h-4" />} label="Assign" onClick={() => { setSelectedBatch(batch.id); setView('assign'); }} />
                                 </div>
@@ -289,70 +248,6 @@ export function BatchManagement() {
                         ))}
                     </div>
                 )
-            )}
-
-            {/* Create/Edit Batch View */}
-            {view === 'create' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
-                        {editId ? 'Edit Batch' : 'Create New Batch'}
-                    </h3>
-                    <form onSubmit={handleCreateBatch} className="space-y-6">
-                        <div>
-                            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Batch Name</label>
-                            <input
-                                type="text"
-                                value={newBatchName}
-                                onChange={(e) => setNewBatchName(e.target.value)}
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                placeholder="e.g., Web Development Q2 2025"
-                                required
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Start Date</label>
-                            <input
-                                type="date"
-                                value={newBatchStartDate}
-                                onChange={(e) => setNewBatchStartDate(e.target.value)}
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                required
-                            />
-                        </div>
-
-                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                            <p className="text-gray-700 dark:text-gray-300 text-sm">
-                                After creating the batch, you can assign students to it from the batch list.
-                            </p>
-                        </div>
-
-                        <div className="flex gap-4">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setNewBatchName('');
-                                    setNewBatchStartDate('');
-                                    setEditId(null);
-                                    if (editUrlParam) {
-                                        router.push('/admin/batches');
-                                    }
-                                    setView('list');
-                                }}
-                                className="flex-1 py-3 px-4 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-70"
-                            >
-                                {isSubmitting ? 'Saving...' : editId ? 'Update Batch' : 'Create Batch'}
-                            </button>
-                        </div>
-                    </form>
-                </div>
             )}
 
             {/* Assign Students View */}

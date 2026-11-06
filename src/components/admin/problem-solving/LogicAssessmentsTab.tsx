@@ -189,3 +189,6 @@ export function LogicAssessmentsTab({ courseId, sections, student, onClearStuden
         </div>
     );
 }
+
+/** The attempt detail modal, reused by the admin Student 360 page. */
+export { Detail as LogicAttemptDetail };
