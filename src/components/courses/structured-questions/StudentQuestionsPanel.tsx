@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CalendarClock, Check, ChevronDown, ClipboardList, Clock, ExternalLink, Mic, Search, X } from 'lucide-react';
+import { CalendarClock, Check, ChevronDown, ClipboardList, Clock, ExternalLink, Mic, PlayCircle, Search, X } from 'lucide-react';
+import { isInLmsVideoUrl } from '@/lib/video-utils';
+import { VideoLink } from '../lesson-video/VideoLink';
 import toast from 'react-hot-toast';
 import { apiErrorCode, apiErrorDetails, apiErrorMessage, structuredCourseService } from '@/services/api/structured-course.api';
 import {
@@ -491,9 +493,11 @@ export function StudentQuestionsPanel({ courseId, readOnly = false }: { courseId
                                             </div>
                                         )}
                                         {question.resourceUrl && (
-                                            <a href={question.resourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-blue-600 dark:text-blue-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800">
-                                                <ExternalLink className="w-4 h-4 flex-shrink-0" aria-hidden="true" /> Open resource
-                                            </a>
+                                            <VideoLink href={question.resourceUrl} videoTitle={question.title} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-blue-600 dark:text-blue-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800">
+                                                {isInLmsVideoUrl(question.resourceUrl)
+                                                    ? <><PlayCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" /> Watch video</>
+                                                    : <><ExternalLink className="w-4 h-4 flex-shrink-0" aria-hidden="true" /> Open resource</>}
+                                            </VideoLink>
                                         )}
                                         {question.progress.assessmentNotes && (
                                             <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">

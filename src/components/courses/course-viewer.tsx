@@ -21,7 +21,6 @@ import type { Course } from '@/types/course';
 import toast from 'react-hot-toast';
 import { TableOfContents } from './TableOfContents';
 import { ProblemTracker } from './problem-tracker/ProblemTracker';
-import { DocumentResourceCard } from './DocumentResourceCard';
 import { CourseOverview } from './structured/CourseOverview';
 import { LessonBody, buildCourseOutline, lessonHeadings, type CourseOutline } from './course-outline';
 import { StudentQuestionsPanel } from './structured-questions/StudentQuestionsPanel';
@@ -383,13 +382,6 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                                     completed={completed}
                                     onOpenLesson={selectLesson}
                                 />
-                                <DocumentResourceCard
-                                    url={courseData.document_url}
-                                    title="Original Course Document"
-                                    description="View the source document this course was built from."
-                                    actionLabel="Open Document"
-                                    className="mt-10"
-                                />
                                 {lessons.length > 0 && (
                                     <div className="mt-10 flex justify-end">
                                         <button
@@ -421,18 +413,6 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
                                     </h1>
                                     <div className="mt-6 h-px bg-gray-100 dark:bg-gray-800" />
                                 </header>
-
-                                {/* Structured courses show the source link on the overview only.
-                                    Legacy courses have no overview page, so their first lesson is the start. */}
-                                {!isStructured && selectedIndex === 0 && (
-                                    <DocumentResourceCard
-                                        url={courseData.document_url}
-                                        title="Original Course Document"
-                                        description="View the source document this course was built from."
-                                        actionLabel="Open Document"
-                                        className="mb-8"
-                                    />
-                                )}
 
                                 <LessonBody item={selectedLesson} />
 

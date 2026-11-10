@@ -19,7 +19,7 @@ const typeOf = (v: VideoSolution): VideoType => v.videoType ?? 'solution';
  * Keeps the whole 16:9 player on screen, under the dialog's header, tabs and
  * selectors, however wide the window is.
  */
-const PLAYER_WIDTH = 'mx-auto w-full sm:max-w-[calc((92dvh-15rem)*16/9)]';
+export const PLAYER_WIDTH = 'mx-auto w-full sm:max-w-[calc((92dvh-15rem)*16/9)]';
 
 /**
  * Plays a problem's videos inside the LMS, in a dark full-attention dialog.

@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { BlockOf } from '@/types/structured-course';
 import { LINK_CLASS, LinkedText } from './linked-text';
+import { VideoLink } from '../../lesson-video/VideoLink';
 
 /** Only http(s) targets are ever rendered as links (defence in depth; the backend already enforces this). */
 export function safeHref(url: string | null | undefined): string | null {
@@ -57,9 +58,9 @@ export const RichTextBlockView = memo(function RichTextBlockView({ block }: { bl
                 if (segment.bold) node = <strong className="font-semibold text-gray-900 dark:text-gray-100">{node}</strong>;
                 if (href) {
                     node = (
-                        <a href={href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+                        <VideoLink href={href} videoTitle={segment.text} className={LINK_CLASS}>
                             {node}
-                        </a>
+                        </VideoLink>
                     );
                 }
                 return <span key={i}>{node}</span>;

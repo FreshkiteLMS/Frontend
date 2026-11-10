@@ -20,6 +20,7 @@ import { CalloutView, type CalloutVariant } from "../structured/blocks/callouts"
 import { ImageView, VideoView } from "../structured/blocks/media";
 import { TableView } from "../structured/blocks/table";
 import { LinkedText } from "../structured/blocks/linked-text";
+import { VideoLink } from "../lesson-video/VideoLink";
 
 export interface LegacySection {
     id: string;
@@ -213,10 +214,10 @@ function InlineText({ text }: { text: string }) {
             const lm = token.match(/\[([^\]]+)\]\(([^)]+)\)/);
             if (lm && /^https?:\/\//i.test(lm[2])) {
                 parts.push(
-                    <a key={m.index} href={lm[2]} target="_blank" rel="noopener noreferrer"
+                    <VideoLink key={m.index} href={lm[2]}
                         className="text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:text-blue-700 dark:hover:text-blue-300">
                         {lm[1]}
-                    </a>
+                    </VideoLink>
                 );
             } else if (lm) {
                 parts.push(lm[1]);
@@ -330,7 +331,7 @@ const ResourceList = memo(function ResourceList({ resources }: { resources: stri
                     <div key={i} className="flex items-center gap-3 p-3.5 bg-white dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/50 rounded-xl">
                         <ExternalLink className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
                         {isUrl(res) ? (
-                            <a href={res.trim()} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 dark:text-blue-400 hover:underline break-all">{res.trim()}</a>
+                            <VideoLink href={res.trim()} className="text-sm text-blue-600 dark:text-blue-400 hover:underline break-all">{res.trim()}</VideoLink>
                         ) : (
                             <span className="text-sm text-gray-700 dark:text-gray-300">{res}</span>
                         )}

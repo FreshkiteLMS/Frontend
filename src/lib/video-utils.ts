@@ -69,6 +69,31 @@ export function isYouTubeUrl(url: string): boolean {
     return /(?:youtube\.com|youtube-nocookie\.com|youtu\.be)/.test(url);
 }
 
+/** Thumbnail for a YouTube video link, or null when the link isn't a YouTube video. */
+export function getYouTubeThumbnailUrl(url: string): string | null {
+    const id = extractYouTubeId(url);
+    return id ? `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg` : null;
+}
+
+const VIMEO_VIDEO_RE = /^(?:www\.|player\.)?vimeo\.com$/i;
+const VIDEO_FILE_RE = /\.(mp4|webm|ogv)$/i;
+
+/**
+ * Whether a course link is a single video the LMS can play in its own player:
+ * a YouTube video, a Vimeo video, or a direct video file. Channels, playlists
+ * without a video, Drive files (often documents) and every other link keep
+ * opening normally.
+ */
+export function isInLmsVideoUrl(url: string | null | undefined): boolean {
+    if (!url) return false;
+    if (extractYouTubeId(url)) return true;
+    const href = safeExternalUrl(url);
+    if (!href) return false;
+    const u = new URL(href);
+    if (VIMEO_VIDEO_RE.test(u.hostname)) return /^\/(?:video\/)?\d{5,}(?:\/|$)/.test(u.pathname);
+    return VIDEO_FILE_RE.test(u.pathname);
+}
+
 /** An http(s) link that is safe to open in a new tab, or null (e.g. javascript: URLs). */
 export function safeExternalUrl(url: string): string | null {
     const u = parseUrl(url);
