@@ -162,7 +162,7 @@ function CourseRow({ course, profileId, canOpen }: { course: ProfileCourse; prof
     const [open, setOpen] = useState(false);
     const [modules, setModules] = useState<Array<{ title: string; total: number; completed: number }> | null>(null);
     const [loading, setLoading] = useState(false);
-    const structured = course.template !== 'problem-solving';
+    const structured = course.template !== 'problem-solving' && course.template !== 'aptitude';
 
     const toggle = async () => {
         const next = !open;

@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation';
 import { courseService } from '@/services/api/course.api';
 import { buildCourseOutline, countContent, LessonBody } from './course-outline';
 import { ProblemCourseManagePanel } from './problem-course-manage';
+import { AptitudeCoursePreview } from '@/components/admin/aptitude/AptitudeCoursePreview';
+import { APTITUDE_TEMPLATE } from '@/types/aptitude';
 import { DocumentResourceCard } from './DocumentResourceCard';
 import { QuestionManager } from './structured-questions/QuestionManager';
 import { STRUCTURED_COURSE_TEMPLATE } from '@/types/structured-questions';
@@ -128,6 +130,7 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
     const outline = buildCourseOutline(course);
     const lessons = outline.lessons;
     const isProblemSolving = course.template_type === 'problem-solving';
+    const isAptitude = course.template_type === APTITUDE_TEMPLATE;
     const problemSections = course.problem_sections || [];
     const totalProblems = problemSections.reduce((n: number, s: any) => n + (s.problems?.length || 0), 0);
     const categoryLabel = (course.category || '').replace(/_/g, ' ');
@@ -284,7 +287,11 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
 
                         <div className="flex items-center gap-6 flex-wrap">
                             <div className="text-2xl font-black text-gray-900 dark:text-white">{formatCurrency(course.price)}</div>
-                            {isProblemSolving ? (
+                            {isAptitude ? (
+                                <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                                    <CheckSquare className="w-4 h-4" /> Aptitude practice — verified concepts and questions below
+                                </div>
+                            ) : isProblemSolving ? (
                                 <>
                                     <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
                                         <BookOpen className="w-4 h-4" /> {problemSections.length} {problemSections.length === 1 ? 'section' : 'sections'}
@@ -325,7 +332,9 @@ export function CoursePreview({ courseId }: CoursePreviewProps) {
             )}
 
             {/* ───────── Content ───────── */}
-            {isProblemSolving ? (
+            {isAptitude ? (
+                <AptitudeCoursePreview courseId={course.id || course._id} />
+            ) : isProblemSolving ? (
                 <ProblemCourseManagePanel
                     courseId={course.id || course._id}
                     sheetUrl={course.problem_sheet?.url}

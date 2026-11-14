@@ -387,7 +387,7 @@ export function StudentDashboard() {
                                                 <div className="flex justify-between text-xs mb-1.5 text-gray-500 dark:text-gray-400">
                                                     <span>
                                                         {item.completedSections || 0} / {item.totalSections || 0}{' '}
-                                                        {item.templateType === 'problem-solving' ? 'problems' : 'lessons'}
+                                                        {item.templateType === 'problem-solving' ? 'problems' : item.templateType === 'aptitude' ? 'questions' : 'lessons'}
                                                     </span>
                                                     <span className="font-semibold">{item.progress || 0}%</span>
                                                 </div>

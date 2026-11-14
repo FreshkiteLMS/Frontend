@@ -304,7 +304,7 @@ export interface BatchListRow {
 }
 export interface CourseListRow {
     id: string; title: string; description?: string; template: string; thumbnailUrl: string | null; enrolled: number; avgProgress: number;
-    completedStudents: number; inProgressStudents: number; modules: number | null; lessons: number | null; problems: number | null;
+    completedStudents: number; inProgressStudents: number; modules: number | null; lessons: number | null; problems: number | null; questions?: number | null;
     status: string; category?: string; difficulty?: string; createdAt?: string; updatedAt?: string;
 }
 export interface ListPage<T, F> { data: T[]; meta: { page: number; limit: number; total: number; totalPages: number }; facets: F }

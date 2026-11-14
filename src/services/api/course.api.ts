@@ -106,10 +106,12 @@ export const courseService = {
      * Server-side only — the AI runs in the backend and the result is stored;
      * returns the initial processing state immediately (HTTP 202).
      */
-    processDocument: async (courseId: string, documentUrl?: string | null, opts: { review?: boolean } = {}): Promise<ProcessingState> => {
+    processDocument: async (courseId: string, documentUrl?: string | null, opts: { review?: boolean; structureOptions?: StructureOptions } = {}): Promise<ProcessingState> => {
         const response = await api.post(`/courses/${courseId}/process`, {
             ...(documentUrl ? { document_url: documentUrl } : {}),
             ...(opts.review ? { review: true } : {}),
+            // Structure settings for the very first run (the server treats this as a review run).
+            ...(opts.structureOptions ? { structure_options: opts.structureOptions } : {}),
         });
         if (response.data.success) {
             return response.data.data;

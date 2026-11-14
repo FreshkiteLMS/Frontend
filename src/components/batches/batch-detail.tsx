@@ -21,11 +21,12 @@ import {
     btnPrimary, btnSecondary, fmtDate, fmtDateTime, fmtRelative, inputCls, useAsync, type TabDef,
 } from '@/components/admin/insights/ui';
 import { BatchAnalyticsView } from './batch-analytics';
+import { BatchAptitudeView } from './batch-aptitude';
 import { AttendanceModal } from './attendance-modal';
 import { CAPABILITY_INFO, CapabilityEditor, GroupsEditor } from './batch-config';
 
-type Tab = 'overview' | 'students' | 'analytics' | 'meetings' | 'groups' | 'settings';
-const TABS: Tab[] = ['overview', 'students', 'analytics', 'meetings', 'groups', 'settings'];
+type Tab = 'overview' | 'students' | 'analytics' | 'aptitude' | 'meetings' | 'groups' | 'settings';
+const TABS: Tab[] = ['overview', 'students', 'analytics', 'aptitude', 'meetings', 'groups', 'settings'];
 
 export function BatchDetail({ batchId }: { batchId: string }) {
     const router = useRouter();
@@ -48,6 +49,7 @@ export function BatchDetail({ batchId }: { batchId: string }) {
         { id: 'overview', label: 'Overview' },
         { id: 'students', label: 'Students', count: o?.counts.students ?? null },
         { id: 'analytics', label: 'Analytics' },
+        { id: 'aptitude', label: 'Aptitude' },
         { id: 'meetings', label: 'Meetings', hidden: !meetingsOn, count: o?.meetings?.scheduled ?? null },
         { id: 'groups', label: 'Communication groups', count: o?.counts.groups ?? null },
         { id: 'settings', label: 'Settings' },
@@ -76,6 +78,7 @@ export function BatchDetail({ batchId }: { batchId: string }) {
                     {tab === 'overview' && <OverviewTab o={o} onTab={setTab} />}
                     {tab === 'students' && <StudentDirectory scope={{ batchId, batchName: o.batch.name }} onMembershipChanged={overview.reload} />}
                     {tab === 'analytics' && <BatchAnalyticsView batchId={batchId} />}
+                    {tab === 'aptitude' && <BatchAptitudeView batchId={batchId} />}
                     {tab === 'meetings' && meetingsOn && <MeetingsTab batchId={batchId} onChanged={overview.reload} />}
                     {tab === 'groups' && <GroupsTab o={o} onSaved={overview.reload} />}
                     {tab === 'settings' && <SettingsTab o={o} onSaved={overview.reload} />}

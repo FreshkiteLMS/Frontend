@@ -136,7 +136,10 @@ export function CourseProcessingPanel({
         return () => { cancelled = true; stopPolling(); };
     }, [courseId, poll, loadDraft]);
 
-    const handleProcess = async () => {
+    // First run: the admin chooses the structure settings before processing.
+    const firstRun = !structured && !draft;
+
+    const handleProcess = async (structureOptions?: StructureOptions) => {
         if (!docLink.trim() || docLinkInvalid) return;
         if ((structured || draft) && !window.confirm('Process the document again? It is read afresh and a new curriculum is generated for you to review. The current curriculum stays unchanged until you apply the new one.')) {
             return;
@@ -146,7 +149,7 @@ export function CourseProcessingPanel({
         try {
             const id = await ensureCourseSaved();
             if (!id) throw new Error('Save the course details first.');
-            const initial = await courseService.processDocument(id, docLink.trim(), { review: true });
+            const initial = await courseService.processDocument(id, docLink.trim(), { review: true, structureOptions });
             setState(initial);
             pollTimer.current = setTimeout(() => poll(id), POLL_INTERVAL_MS);
         } catch (err: any) {
@@ -248,15 +251,17 @@ export function CourseProcessingPanel({
                             value={docLink}
                             onChange={(e) => onDocLinkChange(e.target.value)}
                         />
+                        {!firstRun && (
                         <button
                             type="button"
-                            onClick={handleProcess}
+                            onClick={() => handleProcess()}
                             disabled={busy || !docLink.trim() || docLinkInvalid}
                             className="flex items-center justify-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
                         >
                             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : structured ? <RefreshCw className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
                             {busy ? 'Processing…' : structured ? 'Reprocess Document' : 'Process Document'}
                         </button>
+                        )}
                     </div>
                     <p id="course-document-url-help" className={`mt-2 text-xs ${docLinkInvalid ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
                         {docLinkInvalid
@@ -346,6 +351,15 @@ export function CourseProcessingPanel({
                             applying={applying}
                             onApply={handleApply}
                             onDiscard={handleDiscard}
+                        />
+                    )}
+
+                    {firstRun && (statusLoaded || !courseId) && (
+                        <CustomizeCurriculumForm
+                            mode="initial"
+                            busy={busy}
+                            submitBlockedReason={!docLink.trim() ? 'Paste the document link above to process it.' : docLinkInvalid ? 'Fix the document link above first.' : null}
+                            onSubmit={(options) => handleProcess(options)}
                         />
                     )}
 

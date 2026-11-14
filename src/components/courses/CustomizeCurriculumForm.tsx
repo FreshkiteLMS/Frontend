@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import type { ContentDensity, OrganizationStrategy, StructureOptions } from '@/types/structured-course';
 
 export const MAX_TARGET_MODULES = 50;
@@ -67,6 +67,13 @@ interface CustomizeCurriculumFormProps {
     /** Why customizing is not possible right now (e.g. the original document is not stored yet). */
     unavailableReason?: string | null;
     onSubmit: (options: StructureOptions) => void;
+    /**
+     * initial: settings for the first processing run (submit = Process Document).
+     * reprocess (default): rebuild an existing curriculum from the stored original.
+     */
+    mode?: 'initial' | 'reprocess';
+    /** Settings stay editable, but submitting is blocked (e.g. no valid document link yet). */
+    submitBlockedReason?: string | null;
 }
 
 const inputClass = (invalid: boolean) =>
@@ -79,7 +86,8 @@ const inputClass = (invalid: boolean) =>
  * Submitting rebuilds the curriculum from the original document; the result is
  * a draft to review, never a silent replacement.
  */
-export function CustomizeCurriculumForm({ initial, busy, unavailableReason, onSubmit }: CustomizeCurriculumFormProps) {
+export function CustomizeCurriculumForm({ initial, busy, unavailableReason, onSubmit, mode = 'reprocess', submitBlockedReason }: CustomizeCurriculumFormProps) {
+    const first = mode === 'initial';
     const [fields, setFields] = useState<Fields>(() => toFields(initial ?? DEFAULT_OPTIONS));
     const [touched, setTouched] = useState(false);
     const { options, errors } = validateOptions(fields);
@@ -89,7 +97,7 @@ export function CustomizeCurriculumForm({ initial, busy, unavailableReason, onSu
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         setTouched(true);
-        if (options && !disabled) onSubmit(options);
+        if (options && !disabled && !submitBlockedReason) onSubmit(options);
     };
 
     // Errors appear once the admin has typed something or tried to submit, not on an untouched form.
@@ -97,10 +105,11 @@ export function CustomizeCurriculumForm({ initial, busy, unavailableReason, onSu
 
     return (
         <form onSubmit={submit} aria-labelledby="customize-curriculum-title" className="mt-5 rounded-lg border border-blue-100 dark:border-blue-900 bg-white dark:bg-gray-800 p-4">
-            <h5 id="customize-curriculum-title" className="text-sm font-semibold text-gray-900 dark:text-white">Customize Curriculum Structure</h5>
+            <h5 id="customize-curriculum-title" className="text-sm font-semibold text-gray-900 dark:text-white">{first ? 'Processing Settings' : 'Customize Curriculum Structure'}</h5>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                The AI rebuilds the curriculum from your original document — never from its earlier output — so no content is lost by repeating this.
-                You review the result before anything changes for students.
+                {first
+                    ? 'Choose how the AI should organise your document before it is processed. Leave the targets empty to let the AI decide. You review the result before students see it, and you can change these settings later.'
+                    : 'The AI rebuilds the curriculum from your original document — never from its earlier output — so no content is lost by repeating this. You review the result before anything changes for students.'}
             </p>
 
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -161,14 +170,15 @@ export function CustomizeCurriculumForm({ initial, busy, unavailableReason, onSu
             </div>
 
             {unavailableReason && <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">{unavailableReason}</p>}
+            {!unavailableReason && submitBlockedReason && <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">{submitBlockedReason}</p>}
 
             <div className="mt-4" aria-live="polite">
-                <button type="submit" disabled={disabled || (touched && !options)}
+                <button type="submit" disabled={disabled || !!submitBlockedReason || (touched && !options)}
                     className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    {busy ? 'Reprocessing…' : 'Reprocess Document with Custom Structure'}
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : first ? <Sparkles className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+                    {busy ? (first ? 'Processing…' : 'Reprocessing…') : first ? 'Process Document' : 'Reprocess Document with Custom Structure'}
                 </button>
-                {busy && (
+                {busy && !first && (
                     <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
                         Rebuilding the curriculum from your original document. The current curriculum stays unchanged until you apply the result.
                     </p>

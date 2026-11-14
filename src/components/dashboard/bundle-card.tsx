@@ -35,7 +35,7 @@ export function nextBundleCourse(courses: BundleCourseItem[] = []): BundleCourse
         ?? null;
 }
 
-const unitLabel = (c: BundleCourseItem) => (c.templateType === 'problem-solving' ? 'problems' : 'lessons');
+const unitLabel = (c: BundleCourseItem) => (c.templateType === 'problem-solving' ? 'problems' : c.templateType === 'aptitude' ? 'questions' : 'lessons');
 
 interface BundleCardProps {
     bundle: BundleItem;

@@ -66,13 +66,37 @@ describe('Customize Curriculum Structure', () => {
         expect(screen.getByRole('button', { name: /Reprocess Document with Custom Structure/ })).toBeTruthy();
     });
 
-    test('is not shown before there is anything to customize', async () => {
+    test('before the first run, the settings are offered up front and Process waits for a link', async () => {
         svc.getProcessingStatus.mockResolvedValue(null);
         svc.getCurriculumDraft.mockResolvedValue(null);
         render(<CourseProcessingPanel courseId="c1" docLink="" onDocLinkChange={vi.fn()} ensureCourseSaved={vi.fn()} structured={null} onProcessed={vi.fn()} />);
-        await screen.findByText('Source Document');
-        await waitFor(() => expect(svc.getCurriculumDraft).toHaveBeenCalled());
+        expect(await screen.findByText('Processing Settings')).toBeTruthy();
         expect(screen.queryByText('Customize Curriculum Structure')).toBeNull();
+        // Settings are editable before a link is entered; only processing is blocked.
+        expect((screen.getByLabelText(/Target number of modules/) as HTMLInputElement).disabled).toBe(false);
+        expect((screen.getByRole('button', { name: /^Process Document$/ }) as HTMLButtonElement).disabled).toBe(true);
+        expect(screen.getByText(/Paste the document link above/)).toBeTruthy();
+        // One process button only (the form's), not a second one beside the link.
+        expect(screen.getAllByRole('button', { name: /Process Document/ })).toHaveLength(1);
+    });
+
+    test('the first run is processed with the settings the admin chose', async () => {
+        svc.getProcessingStatus.mockResolvedValue(null);
+        svc.getCurriculumDraft.mockResolvedValue(null);
+        svc.processDocument.mockResolvedValue(state({ status: 'uploaded', active: true, mode: 'review' }));
+        const ensureCourseSaved = vi.fn().mockResolvedValue('new-course');
+        render(<CourseProcessingPanel courseId={null} docLink="https://docs.google.com/document/d/abc/edit" onDocLinkChange={vi.fn()} ensureCourseSaved={ensureCourseSaved} structured={null} onProcessed={vi.fn()} />);
+        await screen.findByText('Processing Settings');
+        type(/Target number of modules/, '4');
+        type(/Target number of lessons/, '12');
+        fireEvent.click(screen.getByRole('radio', { name: /Concept-Based/ }));
+        fireEvent.click(screen.getByRole('button', { name: /^Process Document$/ }));
+        await waitFor(() => expect(svc.processDocument).toHaveBeenCalledTimes(1));
+        expect(ensureCourseSaved).toHaveBeenCalled();
+        expect(svc.processDocument).toHaveBeenCalledWith('new-course', 'https://docs.google.com/document/d/abc/edit', {
+            review: true,
+            structureOptions: { targetModules: 4, targetLessons: 12, density: 'balanced', strategy: 'concept', instructions: '' },
+        });
     });
 
     test('submits exactly what the admin chose', async () => {

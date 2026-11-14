@@ -12,9 +12,10 @@ import {
 } from '../insights/ui';
 import { COURSE_PARTS, HBars, SplitBar } from '../insights/charts';
 import { ActivityTab, AssignmentsTab, AudioTab, CoursesTab, MeetingsTab, ProblemsTab } from './student-360-tabs';
+import { AptitudeTab } from './student-360-aptitude';
 
-type Tab = 'overview' | 'courses' | 'assignments' | 'audio' | 'problems' | 'meetings' | 'activity';
-const TABS: Tab[] = ['overview', 'courses', 'assignments', 'audio', 'problems', 'meetings', 'activity'];
+type Tab = 'overview' | 'courses' | 'assignments' | 'audio' | 'problems' | 'aptitude' | 'meetings' | 'activity';
+const TABS: Tab[] = ['overview', 'courses', 'assignments', 'audio', 'problems', 'aptitude', 'meetings', 'activity'];
 
 /**
  * Student 360 — one admin page for a student's whole journey. Opened from the
@@ -51,6 +52,7 @@ export function Student360({ studentId }: { studentId: string }) {
         { id: 'assignments', label: 'Assignments', count: s ? s.assignments.total + s.tests.taken : null },
         { id: 'audio', label: 'Audio practice', count: s ? s.audio.attempts + s.logic.attempts : null },
         { id: 'problems', label: 'Problem solving', count: s ? s.problems_solved : null },
+        { id: 'aptitude', label: 'Aptitude' },
         { id: 'meetings', label: 'Meetings' },
         { id: 'activity', label: 'Activity' },
     ];
@@ -72,6 +74,7 @@ export function Student360({ studentId }: { studentId: string }) {
                         {tab === 'assignments' && <AssignmentsTab studentId={data.identity.userId} />}
                         {tab === 'audio' && <AudioTab studentId={data.identity.userId} />}
                         {tab === 'problems' && <ProblemsTab studentId={data.identity.userId} />}
+                        {tab === 'aptitude' && <AptitudeTab studentId={data.identity.userId} />}
                         {tab === 'meetings' && <MeetingsTab studentId={data.identity.userId} anyMeetings={anyMeetings} />}
                         {tab === 'activity' && <ActivityTab studentId={data.identity.userId} />}
                     </>

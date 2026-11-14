@@ -2,7 +2,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Video, FileText, Type, Save, Eye, Trash2, Table2, Info, ListChecks } from 'lucide-react';
+import { ArrowLeft, Video, FileText, Type, Save, Eye, Trash2, Table2, Info, ListChecks, Calculator } from 'lucide-react';
+import { APTITUDE_TEMPLATE, type AptitudeVerification } from '@/types/aptitude';
+import { aptitudeService } from '@/services/api/aptitude.api';
+import { apiErrorMessage } from '@/services/api/structured-course.api';
+import { AptitudeDocumentStep } from '@/components/admin/aptitude/AptitudeDocumentStep';
 import toast from 'react-hot-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { courseService } from '@/services/api/course.api';
@@ -51,6 +55,13 @@ const templates = [
         description: 'Learning content from a document plus audio questions and assignments imported from a spreadsheet, with per-student progress tracking',
         icon: ListChecks,
         color: 'bg-teal-100 text-teal-600'
+    },
+    {
+        id: APTITUDE_TEMPLATE,
+        name: 'Aptitude',
+        description: 'Multiple-choice aptitude practice by concept, extracted from a document with AI, with per-question progress and analytics',
+        icon: Calculator,
+        color: 'bg-amber-100 text-amber-600'
     }
 ];
 
@@ -59,6 +70,7 @@ const CATEGORIES = [
     { id: 'mobile_development', name: 'Mobile Development' },
     { id: 'dsa', name: 'DSA' },
     { id: 'problem_solving', name: 'Problem Solving' },
+    { id: 'aptitude', name: 'Aptitude' },
     { id: 'devops', name: 'DevOps' },
     { id: 'ai_ml', name: 'AI & Machine Learning' },
     { id: 'data-science', name: 'Data Science' },
@@ -100,6 +112,7 @@ export function CourseCreation() {
     const [groups, setGroups] = useState<any[]>([]);
     const searchParams = useSearchParams();
     const editId = searchParams.get('id');
+    const stepParam = searchParams.get('step');
 
     useEffect(() => {
         if (editId) {
@@ -166,7 +179,8 @@ export function CourseCreation() {
                         setSections([{ id: 1, title: '', content: '', videoUrl: '', youtube_videos: [], assignments: [], resources: [], persisted: false }]);
                     }
                     setCreatedCourseId(editId);
-                    setStep('details'); // Start directly at details if editing
+                    // Aptitude Step 3 is addressable (?step=content) so refresh/back restores it; others start at details.
+                    setStep(course.template_type === APTITUDE_TEMPLATE && stepParam === 'content' ? 'content' : 'details');
                 } catch (err) {
                     console.error('Failed to fetch course details:', err);
                     toast.error('Failed to load course details. Please try again.');
@@ -174,7 +188,7 @@ export function CourseCreation() {
             };
             fetchCourse();
         }
-    }, [editId]);
+    }, [editId, stepParam]);
 
     useEffect(() => {
         const fetchGroups = async () => {
@@ -194,6 +208,9 @@ export function CourseCreation() {
         // it so the (shared) details form is pre-filled sensibly.
         if (templateId === 'problem-solving') {
             setCourseData(prev => ({ ...prev, category: 'problem_solving' }));
+        }
+        if (templateId === APTITUDE_TEMPLATE) {
+            setCourseData(prev => ({ ...prev, category: 'aptitude' }));
         }
         setStep('details');
     };
@@ -274,8 +291,22 @@ export function CourseCreation() {
         return res.course.id || res.course._id || null;
     };
 
-    const handleDetailsSubmit = (e: React.FormEvent) => {
+    const handleDetailsSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (selectedTemplate === APTITUDE_TEMPLATE) {
+            setIsSaving(true);
+            try {
+                const id = await saveCourseDetails();
+                if (!id) return;
+                setStep('content');
+                router.replace(`/admin/courses/create?id=${encodeURIComponent(id)}&step=content`, { scroll: false });
+            } catch (error: any) {
+                toast.error(error?.response?.data?.error?.message || error?.message || 'The course details could not be saved.');
+            } finally {
+                setIsSaving(false);
+            }
+            return;
+        }
         setStep('content');
         // Only seed an empty section if none exist yet (preserve doc-parsed/edited sections)
         setSections(prev => prev.length > 0 ? prev : [{ id: 1, title: '', content: '', videoUrl: '', youtube_videos: [], assignments: [], resources: [], persisted: false }]);
@@ -438,6 +469,30 @@ export function CourseCreation() {
         ? !!workbookFile || !!createdCourseId
         : !!sheetPreview && sheetPreview.errors.length === 0;
     const isStructuredCourse = selectedTemplate === STRUCTURED_COURSE_TEMPLATE;
+    // Aptitude: only the course details + document link are saved here; questions are
+    // processed, reviewed and edited on the course page.
+    const isAptitude = selectedTemplate === APTITUDE_TEMPLATE;
+    const saveForTemplate = () => (isProblemSolving ? saveProblemCourse() : isAptitude ? saveCourseDetails() : saveCourse());
+    const [aptVerification, setAptVerification] = useState<AptitudeVerification | null>(null);
+    const aptBlockers = aptVerification?.blockers ?? [];
+    const backToDetails = () => {
+        setStep('details');
+        if (isAptitude && createdCourseId) router.replace(`/admin/courses/create?id=${encodeURIComponent(createdCourseId)}`, { scroll: false });
+    };
+    /** Aptitude: verify the saved questions on the server, then open the final preview. */
+    const continueAptitude = async () => {
+        if (!createdCourseId) return;
+        setIsSaving(true);
+        try {
+            await saveCourseDetails();
+            await aptitudeService.verify(createdCourseId);
+            router.push(`/admin/courses/${createdCourseId}/preview`);
+        } catch (err) {
+            toast.error(apiErrorMessage(err, 'The questions could not be verified.'));
+        } finally {
+            setIsSaving(false);
+        }
+    };
     const [questionsImported, setQuestionsImported] = useState(0);
 
 
@@ -448,7 +503,7 @@ export function CourseCreation() {
                 await saveProblemCourse();
                 toast.success(createdCourseId ? 'Problem-solving course updated' : 'Problem-solving course saved as draft');
             } else {
-                await saveCourse();
+                await saveForTemplate();
                 toast.success('Course saved as draft');
             }
             router.push('/admin');
@@ -463,7 +518,7 @@ export function CourseCreation() {
     const handleSaveAndPreview = async () => {
         try {
             setIsSaving(true);
-            const courseId = isProblemSolving ? await saveProblemCourse() : await saveCourse();
+            const courseId = await saveForTemplate();
             if (courseId) {
                 router.push(`/admin/courses/${courseId}/preview`);
             }
@@ -497,7 +552,7 @@ export function CourseCreation() {
             {/* Progress Steps */}
             <div className="mb-8">
                 <div className="flex items-center justify-center gap-4">
-                    {['Template', 'Details', 'Content', 'Preview'].map((label, index) => (
+                    {['Template', 'Details', isAptitude ? 'Process & verify' : 'Content', 'Preview'].map((label, index) => (
                         <div key={label} className="flex items-center gap-4">
                             <div className="flex items-center gap-2">
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium transition-colors ${(step === 'template' && index === 0) ||
@@ -652,9 +707,10 @@ export function CourseCreation() {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                                    disabled={isSaving}
+                                    className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg transition-colors"
                                 >
-                                    Next: Add Content
+                                    {isAptitude ? (isSaving ? 'Saving…' : 'Save & continue to questions') : 'Next: Add Content'}
                                 </button>
                             </div>
                         </form>
@@ -768,6 +824,17 @@ export function CourseCreation() {
                             </div>
                         )}
                         </>
+                        )}
+                    </div>
+                    ) : isAptitude ? (
+                    /* Aptitude: process the Google Doc and verify the questions here, before the final preview */
+                    <div className="mb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Process & verify questions</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Extract the questions from your Google Doc, fix anything flagged, then continue to the course preview.</p>
+                        {createdCourseId ? (
+                            <AptitudeDocumentStep courseId={createdCourseId} docLink={docLink} onDocLinkChange={setDocLink} onVerification={setAptVerification} />
+                        ) : (
+                            <p role="alert" className="text-sm text-red-600">Save the course details first.</p>
                         )}
                     </div>
                     ) : (
@@ -902,6 +969,25 @@ export function CourseCreation() {
                     )}
 
                     {/* Action Buttons */}
+                    {isAptitude ? (
+                    <div className="mt-8 space-y-2">
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                            <button onClick={backToDetails} className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                Back
+                            </button>
+                            <button onClick={handleSaveDraft} disabled={isSaving} className="flex items-center justify-center gap-2 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                <Save className="w-5 h-5" />
+                                Save Draft
+                            </button>
+                            <button onClick={continueAptitude} disabled={isSaving || !aptVerification || aptBlockers.length > 0} aria-describedby="apt-continue-why"
+                                className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg flex-1 justify-center transition-colors disabled:cursor-not-allowed">
+                                <Eye className="w-5 h-5" />
+                                {isSaving ? 'Verifying…' : 'Verify & Continue to Course Preview'}
+                            </button>
+                        </div>
+                        {aptBlockers.length > 0 && <p id="apt-continue-why" className="text-sm text-amber-700 dark:text-amber-300">To continue: {aptBlockers.map(x => x.message).join(' ')}</p>}
+                    </div>
+                    ) : (
                     <div className="mt-8 flex gap-4">
                         <button
                             onClick={() => setStep('details')}
@@ -926,6 +1012,7 @@ export function CourseCreation() {
                             {isSaving ? 'Saving...' : 'Save & Continue to Preview'}
                         </button>
                     </div>
+                    )}
                 </div>
             )}
         </div>

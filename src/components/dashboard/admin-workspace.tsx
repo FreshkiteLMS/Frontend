@@ -26,6 +26,7 @@ const VIEWS: View[] = ['overview', 'batches', 'students', 'courses'];
 const TEMPLATE_LABEL: Record<string, string> = {
     'structured-course': 'Structured',
     'problem-solving': 'Problem solving',
+    aptitude: 'Aptitude',
     'text-video': 'Text & video',
 };
 
@@ -375,6 +376,7 @@ const COURSE_KEYS = ['q', 'category', 'status', 'template', 'enrollment', 'sort'
 
 function structureLabel(c: CourseListRow) {
     if (c.template === 'problem-solving') return `${c.problems ?? 0} problems`;
+    if (c.template === 'aptitude') return `${c.questions ?? 0} questions`;
     if (c.modules !== null) return `${c.modules} modules · ${c.lessons ?? 0} lessons`;
     return `${c.lessons ?? 0} lessons`;
 }

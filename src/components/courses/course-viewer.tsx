@@ -21,6 +21,8 @@ import type { Course } from '@/types/course';
 import toast from 'react-hot-toast';
 import { TableOfContents } from './TableOfContents';
 import { ProblemTracker } from './problem-tracker/ProblemTracker';
+import { AptitudeCourse } from './aptitude/AptitudeCourse';
+import { APTITUDE_TEMPLATE } from '@/types/aptitude';
 import { CourseOverview } from './structured/CourseOverview';
 import { LessonBody, buildCourseOutline, lessonHeadings, type CourseOutline } from './course-outline';
 import { StudentQuestionsPanel } from './structured-questions/StudentQuestionsPanel';
@@ -74,6 +76,8 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
     const [loading, setLoading] = useState(true);
     // Problem-solving courses are rendered by a dedicated tracker.
     const [isProblemCourse, setIsProblemCourse] = useState(false);
+    // Aptitude courses have their own practice interface.
+    const [isAptitudeCourse, setIsAptitudeCourse] = useState(false);
     const [leftOpen, setLeftOpen] = useState(true);
     const [accessDenied, setAccessDenied] = useState<{ title?: string } | null>(null);
 
@@ -95,6 +99,10 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
 
                 if (data.template_type === 'problem-solving') {
                     setIsProblemCourse(true);
+                    return;
+                }
+                if (data.template_type === APTITUDE_TEMPLATE) {
+                    setIsAptitudeCourse(true);
                     return;
                 }
 
@@ -196,6 +204,7 @@ export function CourseViewer({ courseId }: CourseViewerProps) {
     }
 
     if (isProblemCourse) return <ProblemTracker courseId={courseId} />;
+    if (isAptitudeCourse) return <AptitudeCourse courseId={courseData?.id || courseId} />;
 
     if (!courseData || !outline || !selectedId) {
         return (
