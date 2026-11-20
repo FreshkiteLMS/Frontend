@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Lock, User, Mail, AlertCircle, AtSign, Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { nextParamFromLocation } from '@/lib/safe-redirect';
 import { authService } from '@/services/api/auth.api';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -22,6 +23,9 @@ export function SignupForm() {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+    // Carry a post-login destination (e.g. a course being bought) across login ↔ signup.
+    const [nextQuery, setNextQuery] = useState<string | null>(null);
+    useEffect(() => setNextQuery(nextParamFromLocation()), []);
     const [loading, setLoading] = useState(false);
     const { login } = useAuth();
     const router = useRouter();
@@ -39,7 +43,8 @@ export function SignupForm() {
                 try {
                     const loginResult = await login(username, password);
                     if (loginResult.success) {
-                        window.location.href = '/student';
+                        // Back to what they were doing (e.g. buying a course), else the dashboard.
+                        window.location.href = nextParamFromLocation() || '/student';
                     } else {
                         router.push('/login');
                     }
@@ -116,7 +121,7 @@ export function SignupForm() {
                         <h1 className="text-2xl font-black text-gray-900 dark:text-white mb-1.5">Create your free account</h1>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                             Already have an account?{' '}
-                            <Link href="/login" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                            <Link href={nextQuery ? `/login?next=${encodeURIComponent(nextQuery)}` : '/login'} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
                                 Sign in
                             </Link>
                         </p>

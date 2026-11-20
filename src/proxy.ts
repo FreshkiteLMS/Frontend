@@ -11,7 +11,8 @@ export function proxy(request: NextRequest) {
     // Public paths accessible without authentication
     const publicPaths = ['/', '/login', '/signup', '/team', '/success-stories'];
     // Shared profiles (/u/:username) are viewable signed out; the API decides what's public.
-    if (publicPaths.includes(pathname) || pathname.startsWith('/u/')) {
+    // The course catalog (/catalog, /catalog/:courseId, /catalog/bundles/:id) is public too.
+    if (publicPaths.includes(pathname) || pathname.startsWith('/u/') || pathname === '/catalog' || pathname.startsWith('/catalog/')) {
         // If logged-in user visits login/signup, redirect to home
         if (hasToken && (pathname === '/login' || pathname === '/signup')) {
             return NextResponse.redirect(new URL('/', request.url));

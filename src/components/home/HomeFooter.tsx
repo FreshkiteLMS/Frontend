@@ -1,183 +1,88 @@
 "use client";
 
-import Link from "next/link";
-import { Linkedin, Instagram, Twitter, Mail, Phone, ArrowRight } from "lucide-react";
+import Link from 'next/link';
+import { Mail, MessageCircle, Phone } from 'lucide-react';
+import { categoryLabel } from '@/lib/catalog';
 
-const navigation = {
-    programs: [
-        { name: 'Data Structures & Algorithms', href: '#programs' },
-        { name: 'System Design', href: '#programs' },
-        { name: 'Frontend Mastery', href: '#programs' },
-        { name: 'Artificial Intelligence', href: '#programs' },
-        { name: 'Machine Learning', href: '#programs' },
-        { name: 'DevOps Engineering', href: '#programs' },
-        { name: 'Full Stack Development', href: '#programs' },
-    ],
-    company: [
-        { name: 'Success Stories', href: '/success-stories' },
-        { name: 'Our Team', href: '/team' },
-        { name: 'About FreshKite', href: '#team' },
-    ],
-    resources: [
-        { name: 'Learning Paths', href: '#programs' },
-        { name: 'Live Sessions', href: '#' },
-        { name: 'Events', href: '#' },
-    ],
-};
+/**
+ * Social profiles and legal pages. Left empty on purpose: the previous footer
+ * only had placeholder ("#") social links and there are no Privacy Policy /
+ * Terms pages yet. Add entries here and they appear in the footer.
+ */
+const SOCIAL_LINKS: { label: string; href: string }[] = [];
+const LEGAL_LINKS: { label: string; href: string }[] = [];
 
-const socials = [
-    { Icon: Linkedin, label: 'LinkedIn', href: '#' },
-    { Icon: Instagram, label: 'Instagram', href: '#' },
-    { Icon: Twitter, label: 'Twitter / X', href: '#' },
-];
+const linkClass = 'text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors';
 
-export function HomeFooter() {
+function Column({ title, children }: { title: string; children: React.ReactNode }) {
     return (
-        <footer className="bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800">
-                <div className="max-w-7xl mx-auto px-6 lg:px-8">
-                    {/* Main footer content */}
-                    <div className="py-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1.5fr] gap-12">
-                        {/* Brand column */}
-                        <div className="space-y-5">
-                            <Link href="/" className="inline-flex flex-col gap-0.5 group">
-                                <span className="text-2xl font-black tracking-tight text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                    fresh<span className="text-blue-600 dark:text-blue-400">kite</span>
-                                </span>
-                                <span className="text-[10px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-semibold">
-                                    Earn while you learn
-                                </span>
-                            </Link>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed max-w-xs">
-                                Expert-led tech education platform. Structured learning paths, elite mentorship, and proven placement results at top tech companies.
-                            </p>
-                            <div className="flex gap-2">
-                                {socials.map(({ Icon, label, href }) => (
-                                    <a
-                                        key={label}
-                                        href={href}
-                                        aria-label={label}
-                                        className="w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-800/60 transition-all duration-200"
-                                    >
-                                        <Icon className="w-4 h-4" />
-                                    </a>
-                                ))}
-                            </div>
-                        </div>
+        <div>
+            <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-gray-900 dark:text-white mb-4">{title}</h3>
+            <ul className="space-y-2.5">{children}</ul>
+        </div>
+    );
+}
 
-                        {/* Programs */}
-                        <div>
-                            <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-gray-900 dark:text-white mb-5">
-                                Programs
-                            </h4>
-                            <ul className="space-y-3">
-                                {navigation.programs.map((item) => (
-                                    <li key={item.name}>
-                                        <a
-                                            href={item.href}
-                                            className="text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                        >
-                                            {item.name}
-                                        </a>
-                                    </li>
-                                ))}
+/** Section 11 — footer. Category links come from the live catalog. */
+export function HomeFooter({ categories = [] }: { categories?: { key: string; count: number }[] }) {
+    return (
+        <footer className="bg-white dark:bg-gray-950 border-t border-gray-200/70 dark:border-gray-800">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="py-14 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.3fr] gap-10">
+                    <div className="col-span-2 md:col-span-4 lg:col-span-1">
+                        <Link href="/" className="inline-flex flex-col">
+                            <span className="text-2xl font-black tracking-tight text-gray-900 dark:text-white leading-none">
+                                fresh<span className="text-blue-600 dark:text-blue-400">kite</span>
+                            </span>
+                            <span className="text-[9px] uppercase tracking-[0.2em] text-gray-400 font-semibold mt-1">Earn while you learn</span>
+                        </Link>
+                        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 leading-relaxed max-w-xs">
+                            Expert-led technology courses with structured curricula, hands-on practice and progress you can see.
+                        </p>
+                        {SOCIAL_LINKS.length > 0 && (
+                            <ul className="mt-5 flex gap-3">
+                                {SOCIAL_LINKS.map(s => <li key={s.label}><a href={s.href} target="_blank" rel="noopener noreferrer" className={linkClass}>{s.label}</a></li>)}
                             </ul>
-                        </div>
-
-                        {/* Company */}
-                        <div>
-                            <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-gray-900 dark:text-white mb-5">
-                                Company
-                            </h4>
-                            <ul className="space-y-3">
-                                {navigation.company.map((item) => (
-                                    <li key={item.name}>
-                                        <a
-                                            href={item.href}
-                                            className="text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                        >
-                                            {item.name}
-                                        </a>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-
-                        {/* Resources */}
-                        <div>
-                            <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-gray-900 dark:text-white mb-5">
-                                Resources
-                            </h4>
-                            <ul className="space-y-3">
-                                {navigation.resources.map((item) => (
-                                    <li key={item.name}>
-                                        <a
-                                            href={item.href}
-                                            className="text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                        >
-                                            {item.name}
-                                        </a>
-                                    </li>
-                                ))}
-                            </ul>
-
-                            {/* Contact */}
-                            <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-gray-900 dark:text-white mt-8 mb-4">
-                                Contact
-                            </h4>
-                            <div className="space-y-2.5">
-                                <a
-                                    href="mailto:bala@freshkite.com"
-                                    className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                >
-                                    <Mail className="w-3.5 h-3.5 shrink-0" />
-                                    bala@freshkite.com
-                                </a>
-                                <a
-                                    href="tel:+918489186717"
-                                    className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                >
-                                    <Phone className="w-3.5 h-3.5 shrink-0" />
-                                    +91 84891 86717
-                                </a>
-                            </div>
-                        </div>
-
-                        {/* CTA column */}
-                        <div className="space-y-5">
-                            <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-gray-900 dark:text-white">
-                                Ready to Join?
-                            </h4>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                                Apply today and take the first step toward your dream tech career.
-                            </p>
-                            <Link
-                                href="/signup"
-                                className="inline-flex items-center gap-2 w-full justify-center px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 hover:-translate-y-0.5"
-                            >
-                                Sign Up Free
-                                <ArrowRight className="w-4 h-4" />
-                            </Link>
-                            <a
-                                href="https://wa.me/918489186717"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 w-full justify-center px-5 py-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-all duration-200"
-                            >
-                                Chat on WhatsApp
-                            </a>
-                        </div>
+                        )}
                     </div>
 
-                    {/* Bottom bar */}
-                    <div className="py-6 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-                        <p className="text-xs text-gray-400 dark:text-gray-500">
-                            © 2025 FreshKite. All rights reserved.
-                        </p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">
-                            Earn while you learn.
-                        </p>
-                    </div>
+                    <Column title="Courses">
+                        <li><Link href="/#courses" className={linkClass}>All courses</Link></li>
+                        {categories.slice(0, 5).map(c => (
+                            <li key={c.key}><Link href={`/catalog?category=${encodeURIComponent(c.key)}`} className={linkClass}>{categoryLabel(c.key)}</Link></li>
+                        ))}
+                    </Column>
+
+                    <Column title="Explore">
+                        <li><Link href="/catalog" className={linkClass}>Course catalog</Link></li>
+                        <li><Link href="/#bundles" className={linkClass}>Bundles</Link></li>
+                        <li><Link href="/#curriculum" className={linkClass}>Curriculum</Link></li>
+                        <li><Link href="/success-stories" className={linkClass}>Success stories</Link></li>
+                        <li><Link href="/team" className={linkClass}>Our team</Link></li>
+                    </Column>
+
+                    <Column title="Account">
+                        <li><Link href="/signup" className={linkClass}>Create account</Link></li>
+                        <li><Link href="/login" className={linkClass}>Log in</Link></li>
+                        <li><Link href="/student" className={linkClass}>Student dashboard</Link></li>
+                    </Column>
+
+                    <Column title="Contact">
+                        <li><a href="mailto:bala@freshkite.com" className={`${linkClass} inline-flex items-center gap-2`}><Mail className="w-3.5 h-3.5" aria-hidden="true" />bala@freshkite.com</a></li>
+                        <li><a href="tel:+918489186717" className={`${linkClass} inline-flex items-center gap-2`}><Phone className="w-3.5 h-3.5" aria-hidden="true" />+91 84891 86717</a></li>
+                        <li><a href="https://wa.me/918489186717" target="_blank" rel="noopener noreferrer" className={`${linkClass} inline-flex items-center gap-2`}><MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />Chat on WhatsApp</a></li>
+                    </Column>
                 </div>
-            </footer>
+
+                <div className="py-6 border-t border-gray-200/70 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <p className="text-xs text-gray-400">© {new Date().getFullYear()} FreshKite. All rights reserved.</p>
+                    {LEGAL_LINKS.length > 0 && (
+                        <ul className="flex gap-4">
+                            {LEGAL_LINKS.map(l => <li key={l.label}><Link href={l.href} className="text-xs text-gray-400 hover:text-blue-600">{l.label}</Link></li>)}
+                        </ul>
+                    )}
+                </div>
+            </div>
+        </footer>
     );
 }

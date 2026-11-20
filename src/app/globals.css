@@ -349,3 +349,32 @@ body {
   .ui-fade-in,
   .ui-pop-in { animation: none; }
 }
+
+/* ── Landing page motion (transform/opacity only; off for reduced motion) ── */
+@keyframes heroDrift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(30px, -24px, 0) scale(1.05); }
+  66% { transform: translate3d(-20px, 18px, 0) scale(0.97); }
+}
+.hero-blob { animation: heroDrift 18s ease-in-out infinite; will-change: transform; }
+.hero-blob--slow { animation-duration: 26s; animation-delay: -6s; }
+.hero-blob--alt { animation-duration: 22s; animation-direction: reverse; }
+
+@keyframes ctaShine {
+  0% { transform: translateX(-120%) skewX(-20deg); }
+  60%, 100% { transform: translateX(220%) skewX(-20deg); }
+}
+.cta-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: ctaShine 3.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-blob,
+  .cta-shine::after { animation: none; }
+}

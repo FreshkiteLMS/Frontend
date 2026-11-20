@@ -1,222 +1,168 @@
 "use client";
 
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, BookOpen, Users, Award } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { ArrowRight, Layers, ListChecks, Sparkles } from 'lucide-react';
+import type { Catalog, CatalogCourse } from '@/types/catalog';
+import { useAuth } from '@/hooks/use-auth';
+import { categoryLabel, formatINR, moduleWord, unitLabel } from '@/lib/catalog';
+import { CourseCover, useMounted } from '@/components/catalog/ui';
+import { courseDetailsHref } from '@/components/catalog/course-card';
 
-export function HeroSection() {
+const ease = [0.22, 1, 0.36, 1] as const;
+
+/** Three published courses with the richest curriculum — real data, never mock-ups. */
+function heroCourses(catalog: Catalog | null): CatalogCourse[] {
+    if (!catalog) return [];
+    return [...catalog.courses].sort((a, b) => b.counts.lessons - a.counts.lessons || b.counts.modules - a.counts.modules).slice(0, 3);
+}
+
+function FloatingCourse({ course, index }: { course: CatalogCourse; index: number }) {
+    const reduce = useReducedMotion();
+    const positions = [
+        'left-0 top-6 w-[270px] rotate-[-4deg]',
+        'right-0 top-28 w-[280px] rotate-[3deg]',
+        'left-10 bottom-0 w-[260px] rotate-[1.5deg]',
+    ];
     return (
-        <section className="relative pt-28 pb-24 overflow-hidden bg-white dark:bg-gray-950">
-                {/* Subtle ambient gradients */}
-                <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                    <div className="absolute top-0 right-0 w-[700px] h-[700px] bg-blue-50 dark:bg-blue-950/20 rounded-full blur-3xl translate-x-1/3 -translate-y-1/4 opacity-60" />
-                    <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-50 dark:bg-indigo-950/10 rounded-full blur-3xl -translate-x-1/3 translate-y-1/4 opacity-40" />
-                </div>
-
-                <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
-                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_460px] gap-16 xl:gap-24 items-center">
-
-                        {/* Left: Content */}
-                        <div>
-                            {/* Badge */}
-                            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/60 rounded-full mb-8">
-                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-                                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 tracking-wide">
-                                    Expert-Led Tech Education Platform
-                                </span>
-                            </div>
-
-                            {/* Headline */}
-                            <h1 className="text-5xl sm:text-6xl lg:text-[66px] font-black tracking-tight text-gray-900 dark:text-white leading-[1.04] mb-6">
-                                Build Your Dream
-                                <span className="block mt-1 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
-                                    Tech Career
-                                </span>
-                            </h1>
-
-                            <p className="text-lg text-gray-600 dark:text-gray-400 leading-relaxed max-w-lg mb-10">
-                                Structured learning paths, elite mentorship from industry veterans with 20+ years of experience, and a proven track record of placing engineers at top tech companies.
-                            </p>
-
-                            {/* Feature bullets */}
-                            <div className="space-y-3.5 mb-10">
-                                {[
-                                    '7+ specialized tech learning tracks',
-                                    'Mentors from Qualcomm, Amdocs & global tech leaders',
-                                    'Proven placements — highest package 57 LPA',
-                                ].map((item) => (
-                                    <div key={item} className="flex items-center gap-3">
-                                        <CheckCircle2 className="w-5 h-5 text-blue-500 shrink-0" />
-                                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item}</span>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* CTAs */}
-                            <div className="flex flex-wrap gap-3 mb-12">
-                                <Link
-                                    href="/signup"
-                                    className="inline-flex items-center gap-2 px-7 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 hover:-translate-y-0.5 active:translate-y-0 active:shadow-none"
-                                >
-                                    Get Started Free
-                                    <ArrowRight className="w-4 h-4" />
-                                </Link>
-                                <Link
-                                    href="#programs"
-                                    className="inline-flex items-center gap-2 px-7 py-3.5 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 font-semibold rounded-xl border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 hover:-translate-y-0.5"
-                                >
-                                    View Programs
-                                </Link>
-                            </div>
-
-                            {/* Alumni trust */}
-                            <div className="flex items-center gap-6 pt-6 border-t border-gray-100 dark:border-gray-800/80">
-                                <div>
-                                    <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2.5">
-                                        Alumni placed at
-                                    </p>
-                                    <div className="flex items-center gap-6">
-                                        {['Qualcomm', 'Netgear', 'Avasoft'].map((company) => (
-                                            <span key={company} className="text-sm font-bold text-gray-600 dark:text-gray-400">
-                                                {company}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Right: Dashboard Mockup */}
-                        <div className="hidden lg:block relative">
-                            <LMSDashboardMockup />
+        <motion.div
+            className={`absolute ${positions[index]}`}
+            initial={reduce ? false : { opacity: 0, y: 40, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.35 + index * 0.15, ease }}
+            style={{ zIndex: 3 - index }}
+        >
+            <motion.div
+                animate={reduce ? undefined : { y: [0, index % 2 ? 10 : -10, 0] }}
+                transition={{ duration: 6 + index, repeat: Infinity, ease: 'easeInOut' }}
+            >
+                <Link
+                    href={courseDetailsHref(course)}
+                    className="block rounded-2xl bg-white/95 dark:bg-gray-900/95 backdrop-blur border border-gray-200/80 dark:border-gray-700/70 shadow-2xl shadow-indigo-950/20 overflow-hidden hover:-translate-y-1 hover:shadow-indigo-600/25 transition-all duration-300"
+                >
+                    <div className="h-24 overflow-hidden"><CourseCover src={course.thumbnailUrl} title={course.title} kind={course.kind} /></div>
+                    <div className="p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">{categoryLabel(course.category)}</p>
+                        <p className="mt-1 text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2">{course.title}</p>
+                        <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                            <span className="inline-flex items-center gap-1">
+                                <Layers className="w-3 h-3" aria-hidden="true" />{course.counts.modules} {moduleWord(course.kind, course.counts.modules)}{course.counts.lessons > 0 ? ` · ${unitLabel(course.counts.unit, course.counts.lessons)}` : ''}
+                            </span>
+                            {course.price > 0 && <span className="text-gray-900 dark:text-white font-black">{formatINR(course.price)}</span>}
                         </div>
                     </div>
-                </div>
-            </section>
-
+                </Link>
+            </motion.div>
+        </motion.div>
     );
 }
 
-function LMSDashboardMockup() {
+export function HeroSection({ catalog, loading }: { catalog: Catalog | null; loading: boolean }) {
+    const reduce = useReducedMotion();
+    const mounted = useMounted();
+    const { user } = useAuth();
+    const signedIn = mounted && !!user;
+    const dashboardHref = user?.role === 'admin' ? '/admin' : '/student';
+    const courses = heroCourses(catalog);
+    const stats = catalog?.stats;
+
+    const fade = (delay: number) => ({
+        initial: reduce ? false : { opacity: 0, y: 22 },
+        animate: { opacity: 1, y: 0 },
+        transition: { duration: 0.7, delay, ease },
+    });
+
     return (
-        <div className="relative">
-            {/* Ambient glow */}
-            <div className="absolute -inset-8 bg-gradient-to-br from-blue-500/8 to-indigo-500/8 dark:from-blue-500/6 dark:to-indigo-500/6 rounded-[40px] blur-3xl" />
+        <section aria-labelledby="hero-title" className="relative overflow-hidden bg-white dark:bg-gray-950 pt-28 sm:pt-32 pb-20 lg:pb-28">
+            {/* Animated ambient background */}
+            <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+                <div className="hero-blob absolute -top-40 -right-32 w-[620px] h-[620px] rounded-full bg-blue-400/25 dark:bg-blue-600/20 blur-3xl" />
+                <div className="hero-blob hero-blob--slow absolute top-1/3 -left-40 w-[520px] h-[520px] rounded-full bg-indigo-400/20 dark:bg-indigo-600/15 blur-3xl" />
+                <div className="hero-blob hero-blob--alt absolute -bottom-40 right-1/4 w-[460px] h-[460px] rounded-full bg-fuchsia-300/20 dark:bg-fuchsia-700/10 blur-3xl" />
+                <div
+                    className="absolute inset-0 opacity-[0.35] dark:opacity-[0.18] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_75%)]"
+                    style={{ backgroundImage: 'linear-gradient(rgba(99,102,241,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,.18) 1px, transparent 1px)', backgroundSize: '44px 44px' }}
+                />
+            </div>
 
-            {/* Main card */}
-            <div className="relative bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
-                {/* Window chrome */}
-                <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/80">
-                    <div className="flex gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-                        <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
-                    </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 dark:bg-gray-800 rounded-full">
-                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">freshkite.com/dashboard</span>
-                    </div>
-                    <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
-                        <span className="text-white text-[8px] font-black">FK</span>
-                    </div>
-                </div>
-
-                {/* Dashboard content */}
-                <div className="p-4 space-y-3.5">
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-[11px] text-gray-400 dark:text-gray-500">Welcome back!</p>
-                            <p className="text-sm font-bold text-gray-900 dark:text-white">Continue Your Journey</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-900/60 rounded-full">
-                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                            <span className="text-[9px] font-bold text-green-700 dark:text-green-400">12-Day Streak</span>
-                        </div>
-                    </div>
-
-                    {/* Active course */}
-                    <div className="rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 p-4 text-white">
-                        <div className="flex items-start justify-between mb-3">
-                            <div>
-                                <span className="text-[10px] font-semibold text-blue-200 uppercase tracking-wider">In Progress</span>
-                                <h4 className="text-sm font-bold mt-0.5 leading-tight">Data Structures &<br />Algorithms</h4>
-                                <p className="text-[11px] text-blue-200 mt-1">Module 7 of 12 · Binary Trees</p>
-                            </div>
-                            <div className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center shrink-0">
-                                <BookOpen className="w-4 h-4 text-white" />
-                            </div>
-                        </div>
-                        <div className="space-y-1.5">
-                            <div className="flex justify-between items-center">
-                                <span className="text-[10px] text-blue-100">Progress</span>
-                                <span className="text-[10px] font-bold text-white">58% complete</span>
-                            </div>
-                            <div className="h-1.5 bg-white/25 rounded-full overflow-hidden">
-                                <div className="h-full bg-white rounded-full" style={{ width: '58%' }} />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Stats row */}
-                    <div className="grid grid-cols-3 gap-2">
-                        {[
-                            { label: 'Modules', value: '6', sub: 'completed' },
-                            { label: 'Tasks', value: '4', sub: 'pending' },
-                            { label: 'Score', value: '94', sub: 'avg pts' },
-                        ].map((s) => (
-                            <div key={s.label} className="bg-gray-50 dark:bg-gray-800/70 rounded-xl p-3 text-center">
-                                <p className="text-lg font-black text-gray-900 dark:text-white leading-none">{s.value}</p>
-                                <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 leading-tight">{s.sub}</p>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Upcoming sessions */}
+            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="grid lg:grid-cols-[minmax(0,1fr)_540px] gap-14 xl:gap-20 items-center">
                     <div>
-                        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">
-                            Upcoming Sessions
-                        </p>
-                        <div className="space-y-1.5">
-                            {[
-                                { title: 'System Design Masterclass', time: 'Today · 6:00 PM', badge: 'LIVE', badgeStyle: 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/60', bar: 'bg-red-500' },
-                                { title: 'DSA Problem Solving', time: 'Tomorrow · 8:00 PM', badge: 'BATCH', badgeStyle: 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/60', bar: 'bg-blue-500' },
-                            ].map((s) => (
-                                <div key={s.title} className="flex items-center gap-2.5 px-3 py-2.5 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800/60">
-                                    <div className={`w-0.5 h-8 rounded-full shrink-0 ${s.bar}`} />
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[11px] font-semibold text-gray-900 dark:text-white leading-tight truncate">{s.title}</p>
-                                        <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">{s.time}</p>
+                        <motion.p {...fade(0)} className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800/60 text-xs font-bold text-blue-700 dark:text-blue-300 tracking-wide">
+                            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" /> Expert-led courses · Hands-on practice
+                        </motion.p>
+
+                        <motion.h1 {...fade(0.08)} id="hero-title" className="mt-7 text-[42px] leading-[1.02] sm:text-6xl lg:text-[68px] font-black tracking-tight text-gray-900 dark:text-white">
+                            Build real skills.
+                            <span className="block bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 dark:from-blue-400 dark:via-indigo-400 dark:to-fuchsia-400 bg-clip-text text-transparent pb-1">
+                                Grow your tech career.
+                            </span>
+                        </motion.h1>
+
+                        <motion.p {...fade(0.16)} className="mt-6 text-lg sm:text-xl text-gray-600 dark:text-gray-400 leading-relaxed max-w-xl">
+                            Structured courses, guided problem solving and practice assessments — designed by engineers with decades of industry experience. See every module before you enroll, then learn at your own pace.
+                        </motion.p>
+
+                        <motion.div {...fade(0.24)} className="mt-9 flex flex-col sm:flex-row gap-3">
+                            <a
+                                href="#courses"
+                                className="group inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold shadow-xl shadow-gray-900/15 hover:-translate-y-0.5 transition-all duration-200"
+                            >
+                                Explore courses
+                                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" aria-hidden="true" />
+                            </a>
+                            {signedIn ? (
+                                <Link href={dashboardHref} className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 shadow-xl shadow-blue-600/25 hover:-translate-y-0.5 transition-all duration-200">
+                                    Go to your dashboard
+                                </Link>
+                            ) : (
+                                <Link href="/signup" className="cta-shine relative overflow-hidden inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 shadow-xl shadow-blue-600/30 hover:shadow-blue-600/45 hover:-translate-y-0.5 transition-all duration-200">
+                                    Create free account
+                                </Link>
+                            )}
+                        </motion.div>
+                        {!signedIn && (
+                            <motion.p {...fade(0.3)} className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                                Already learning with us?{' '}
+                                <Link href="/login" className="font-bold text-blue-600 dark:text-blue-400 hover:underline">Log in</Link>
+                            </motion.p>
+                        )}
+
+                        {stats && stats.courses > 0 && (
+                            <motion.dl {...fade(0.36)} className="mt-10 pt-8 border-t border-gray-200/80 dark:border-gray-800 grid grid-cols-3 gap-4 max-w-lg">
+                                {[
+                                    { label: stats.courses === 1 ? 'Course' : 'Courses', value: stats.courses },
+                                    { label: 'Modules', value: stats.modules },
+                                    stats.problems > 0
+                                        ? { label: 'Practice problems', value: stats.problems }
+                                        : { label: 'Lessons', value: stats.lessons },
+                                ].filter(s => s.value > 0).map(s => (
+                                    <div key={s.label}>
+                                        <dt className="text-xs font-semibold text-gray-500 dark:text-gray-400">{s.label}</dt>
+                                        <dd className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tabular-nums">{s.value.toLocaleString('en-IN')}</dd>
                                     </div>
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${s.badgeStyle}`}>{s.badge}</span>
+                                ))}
+                            </motion.dl>
+                        )}
+                    </div>
+
+                    {/* Real courses, floating */}
+                    <div className="relative hidden lg:block h-[480px]" aria-label="Featured courses">
+                        {loading && !courses.length ? (
+                            <div className="absolute inset-8 rounded-3xl bg-gray-100/80 dark:bg-gray-900/60 animate-pulse" />
+                        ) : courses.length ? (
+                            courses.map((c, i) => <FloatingCourse key={c.id} course={c} index={i} />)
+                        ) : (
+                            <div className="absolute inset-10 rounded-3xl border border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center text-center p-10">
+                                <div>
+                                    <ListChecks className="w-8 h-8 text-blue-500 mx-auto mb-3" aria-hidden="true" />
+                                    <p className="font-bold text-gray-900 dark:text-white">Courses launching soon</p>
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
-
-            {/* Floating achievement badge */}
-            <div className="absolute -bottom-5 -left-6 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/80 rounded-2xl px-4 py-3 shadow-xl shadow-black/10">
-                <div className="flex items-center gap-2 mb-1">
-                    <Award className="w-3.5 h-3.5 text-yellow-500" />
-                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Alumni Achievement</span>
-                </div>
-                <p className="text-sm font-black text-gray-900 dark:text-white">57 LPA Package</p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Nishok · Qualcomm</p>
-            </div>
-
-            {/* Floating batch card */}
-            <div className="absolute -top-4 -right-5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/80 rounded-2xl px-3.5 py-3 shadow-xl shadow-black/10">
-                <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 bg-blue-100 dark:bg-blue-900/50 rounded-lg flex items-center justify-center">
-                        <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                        <p className="text-[11px] font-bold text-gray-900 dark:text-white">Active Batch</p>
-                        <p className="text-[9px] text-gray-400 dark:text-gray-500">12 learners enrolled</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+        </section>
     );
 }

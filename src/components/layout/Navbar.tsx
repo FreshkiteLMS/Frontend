@@ -7,7 +7,9 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 
 const navLinks = [
-    { label: 'Programs', href: '/#programs' },
+    { label: 'Courses', href: '/#courses' },
+    { label: 'Curriculum', href: '/#curriculum' },
+    { label: 'Bundles', href: '/#bundles' },
     { label: 'Success Stories', href: '/success-stories' },
     { label: 'Team', href: '/team' },
 ];
@@ -34,6 +36,7 @@ export function Navbar() {
 
     return (
         <nav
+                aria-label="Main"
                 className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
                     scrolled
                         ? 'bg-white/95 dark:bg-gray-950/95 backdrop-blur-md border-b border-gray-100 dark:border-gray-800/60 shadow-sm shadow-black/5'
@@ -99,9 +102,9 @@ export function Navbar() {
                                     {/* Sign Up CTA */}
                                     <Link
                                         href="/signup"
-                                        className="hidden sm:inline-flex items-center px-4 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-150 hover:shadow-md hover:shadow-blue-500/25"
+                                        className="inline-flex items-center px-3 sm:px-4 py-2 text-sm font-bold whitespace-nowrap bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg transition-all duration-150 shadow-md shadow-blue-600/25 hover:shadow-blue-600/40"
                                     >
-                                        Sign Up
+                                        Sign Up<span className="hidden sm:inline">&nbsp;Free</span>
                                     </Link>
                                 </>
                             )}
@@ -110,6 +113,8 @@ export function Navbar() {
                             <button
                                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                                 aria-label="Toggle mobile menu"
+                                aria-expanded={mobileMenuOpen}
+                                aria-controls="mobile-nav"
                                 className="md:hidden p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-all duration-150"
                             >
                                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -120,7 +125,7 @@ export function Navbar() {
 
                 {/* Mobile menu */}
                 {mobileMenuOpen && (
-                    <div className="md:hidden bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800 px-6 py-4 space-y-1">
+                    <div id="mobile-nav" className="md:hidden bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800 px-6 py-4 space-y-1">
                         {navLinks.map((link) => (
                             <a
                                 key={link.label}

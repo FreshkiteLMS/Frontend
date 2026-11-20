@@ -70,6 +70,10 @@ export function Modal({
         window.setTimeout(() => focusTarget?.focus(), 0);
 
         const onKey = (e: KeyboardEvent) => {
+            // With stacked dialogs (e.g. checkout opened from a details dialog), only the
+            // one holding focus reacts — Escape must not close the dialog underneath too.
+            const active = document.activeElement;
+            if (active && active !== document.body && panelRef.current && !panelRef.current.contains(active)) return;
             if (e.key === 'Escape') {
                 e.stopPropagation();
                 onCloseRef.current();

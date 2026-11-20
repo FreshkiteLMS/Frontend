@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Lock, User, AlertCircle, Eye, EyeOff, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import Link from 'next/link';
@@ -19,6 +19,9 @@ export function LoginForm() {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+    // Carry a post-login destination (e.g. a course being bought) across login ↔ signup.
+    const [nextQuery, setNextQuery] = useState<string | null>(null);
+    useEffect(() => setNextQuery(nextParamFromLocation()), []);
     const [loading, setLoading] = useState(false);
     const { login, googleLogin } = useAuth();
 
@@ -137,7 +140,7 @@ export function LoginForm() {
                         <h1 className="text-2xl font-black text-gray-900 dark:text-white mb-1.5">Sign in to your account</h1>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                             Don't have an account?{' '}
-                            <Link href="/signup" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                            <Link href={nextQuery ? `/signup?next=${encodeURIComponent(nextQuery)}` : '/signup'} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
                                 Sign up free
                             </Link>
                         </p>
