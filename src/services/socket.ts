@@ -22,6 +22,9 @@ function serverOrigin(): string {
 export function getSocket(): Socket {
     if (!socket) {
         socket = io(serverOrigin(), {
+            // The server authorizes notification rooms from this token (read
+            // fresh on every reconnect), never from a client-supplied id.
+            auth: (cb) => cb({ token: currentToken() }),
             transports: ['websocket', 'polling'],
             autoConnect: true,
             reconnection: true,
@@ -32,14 +35,21 @@ export function getSocket(): Socket {
     return socket;
 }
 
+function currentToken(): string {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('token') || '';
+}
+
 /** Join the appropriate realtime room for the current user. */
 export function joinUserRoom(opts: { userId?: string; role?: string }) {
     const s = getSocket();
     const join = () => {
+        // The token proves who is asking; the server rejects any other room.
+        const token = currentToken();
         if (opts.role === 'admin') {
-            s.emit('join_admin_room');
+            s.emit('join_admin_room', { token });
         } else if (opts.userId) {
-            s.emit('join_student_room', { studentId: opts.userId });
+            s.emit('join_student_room', { studentId: opts.userId, token });
         }
     };
     if (s.connected) join();
