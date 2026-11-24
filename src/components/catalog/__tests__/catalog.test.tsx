@@ -15,7 +15,10 @@ vi.mock('@/components/payment/PaymentButton', () => ({
     default: ({ label, courseId }: { label?: string; courseId: string }) => <button type="button" data-item={courseId}>{label ?? 'Buy Now'}</button>,
 }));
 vi.mock('@/components/layout/selling-navbar', () => ({ SellingNavbar: () => null }));
-vi.mock('@/services/api/enrollment-request.api', () => ({ enrollmentRequestService: { getMine: vi.fn().mockResolvedValue([]) } }));
+vi.mock('@/services/api/enrollment-management.api', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/services/api/enrollment-management.api')>()),
+    accessRequestApi: { mine: vi.fn().mockResolvedValue([]), create: vi.fn(), cancel: vi.fn(), get: vi.fn(), myEnrollments: vi.fn().mockResolvedValue([]) },
+}));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { filterCourses, DEFAULT_FILTERS, loginHref, studentStoreHref } from '@/lib/catalog';

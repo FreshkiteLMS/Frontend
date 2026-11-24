@@ -123,6 +123,7 @@ function Header({ o, onTab }: { o: StudentOverview; onTab: (t: Tab) => void }) {
             <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-100 dark:border-gray-800 pt-4 text-sm">
                 <button type="button" onClick={() => onTab('courses')} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">View courses &amp; enrolment</button>
                 <button type="button" onClick={() => onTab('assignments')} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Assess assignments</button>
+                <Link href={`/admin/enrollments?tab=grant&student=${encodeURIComponent(id.userId)}`} className="rounded-lg border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20">Grant access</Link>
                 <Link href="/admin/batches" className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Manage batch membership</Link>
                 <Link href="/admin/assessment-attempts" className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Attempt limits</Link>
                 {pendingCount > 0 && (
@@ -280,7 +281,7 @@ function OverviewTab({ o, onTab }: { o: StudentOverview; onTab: (t: Tab) => void
                                     <li key={r.id} className="flex justify-between gap-2"><span className="min-w-0 truncate">+{r.requested_count} attempts · {r.item_title}</span><Link href="/admin/assessment-attempts" className="shrink-0 text-blue-600 hover:underline">Review</Link></li>
                                 ))}
                                 {o.pending.enrollmentRequests.map(r => (
-                                    <li key={r.id} className="flex justify-between gap-2"><span className="min-w-0 truncate">Enrolment · {r.name}</span><Link href="/admin/enrollment-requests" className="shrink-0 text-blue-600 hover:underline">Review</Link></li>
+                                    <li key={r.id} className="flex justify-between gap-2"><span className="min-w-0 truncate">Enrolment · {r.name}</span><Link href="/admin/enrollments?tab=requests" className="shrink-0 text-blue-600 hover:underline">Review</Link></li>
                                 ))}
                             </ul>
                         )}

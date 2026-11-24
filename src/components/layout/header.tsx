@@ -28,6 +28,7 @@ import {
     Package,
     TicketPercent,
     Mic,
+    KeyRound,
     type LucideIcon,
 } from 'lucide-react';
 import { notificationService, Notification } from '@/services/api/notification.api';
@@ -51,7 +52,7 @@ const ADMIN_NAV: NavItem[] = [
     { href: '/admin/bundles', label: 'Bundles', icon: Package },
     { href: '/admin/discounts', label: 'Discounts', icon: TicketPercent },
     { href: '/admin/assessment-attempts', label: 'Attempts', icon: Mic },
-    { href: '/admin/enrollment-requests', label: 'Requests', icon: ClipboardCheck },
+    { href: '/admin/enrollments', label: 'Enrollments', icon: ClipboardCheck },
     { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
 ];
 
@@ -59,6 +60,7 @@ const STUDENT_NAV: NavItem[] = [
     { href: '/student', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: '/student/courses', label: 'Courses', icon: BookOpen },
     { href: '/student/meetings', label: 'Meetings', icon: CalendarDays },
+    { href: '/student/access-requests', label: 'Access Requests', icon: KeyRound },
     { href: '/friends', label: 'Friends', icon: HeartHandshake },
     { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
 ];

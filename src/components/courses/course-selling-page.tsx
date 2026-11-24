@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { MotionConfig } from "framer-motion";
-import { BookOpen, CheckCircle2, Clock, GraduationCap, Package, ShieldCheck } from "lucide-react";
+import { BookOpen, CheckCircle2, GraduationCap, KeyRound, Package } from "lucide-react";
 import { SellingNavbar } from "@/components/layout/selling-navbar";
 import { HomeFooter } from "@/components/home/HomeFooter";
 import { bundleCourses } from "@/components/home/BundleShowcase";
@@ -13,15 +13,12 @@ import { AllAccessCard, CatalogBundleCard } from "@/components/catalog/bundle-ca
 import { BundleDetailsLoader, CourseDetailsLoader } from "@/components/catalog/details";
 import { EmptyState, ErrorState, Reveal, useMounted } from "@/components/catalog/ui";
 import { Modal } from "@/components/ui/modal";
-import { RequestApprovalModal } from "./request-approval-modal";
-import { enrollmentRequestService } from "@/services/api/enrollment-request.api";
-import { ProductType, ApprovalStatus, productKey } from "@/types/enrollment-request";
+import { AccessRequestControl } from "./access-request-control";
 import type { CatalogCourse } from "@/types/catalog";
 import { useAuth } from "@/hooks/use-auth";
 import { useCourseAccess } from "@/hooks/use-course-access";
 import { useCatalog } from "@/hooks/use-catalog";
 
-const ALL_IN_ONE_ID = "ALL_IN_ONE";
 type Tab = "courses" | "bundles" | "mine";
 type Open = { type: "course" | "bundle"; id: string } | null;
 
@@ -60,8 +57,6 @@ export function CourseSellingPage() {
 
     const [tab, setTab] = useState<Tab>("courses");
     const [open, setOpen] = useState<Open>(null);
-    const [requestStatuses, setRequestStatuses] = useState<Map<string, ApprovalStatus>>(new Map());
-    const [requestModal, setRequestModal] = useState<{ productType: ProductType; productId: string; productName: string } | null>(null);
 
     useEffect(() => {
         const loc = readLocation();
@@ -75,44 +70,9 @@ export function CourseSellingPage() {
     }, [tab]);
     const switchTab = (t: Tab) => { setTab(t); writeLocation(open, t); };
 
-    const loadMyRequests = useCallback(async () => {
-        if (!isStudent) return;
-        try {
-            const reqs = await enrollmentRequestService.getMine();
-            const map = new Map<string, ApprovalStatus>();
-            for (const r of reqs) {
-                const key = productKey(r.product_type, r.product_id);
-                const prev = map.get(key);
-                if (!prev || r.status === "PENDING" || (r.status === "APPROVED" && prev !== "PENDING")) map.set(key, r.status);
-            }
-            setRequestStatuses(map);
-        } catch {
-            // non-critical
-        }
-    }, [isStudent]);
-    useEffect(() => { loadMyRequests(); }, [loadMyRequests, user?.id]);
-
-    const renderRequestControl = (productType: ProductType, productId: string, productName: string) => {
-        if (!isStudent) return null;
-        const status = requestStatuses.get(productKey(productType, productId));
-        if (status === "APPROVED") return null;
-        if (status === "PENDING") {
-            return (
-                <span className="inline-flex items-center justify-center gap-1.5 w-full text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 rounded-xl">
-                    <Clock className="w-4 h-4" /> Approval Pending
-                </span>
-            );
-        }
-        return (
-            <button
-                type="button"
-                onClick={() => setRequestModal({ productType, productId, productName })}
-                className="inline-flex items-center justify-center gap-1.5 w-full text-xs font-bold text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-4 py-2.5 rounded-xl transition-all"
-            >
-                <ShieldCheck className="w-4 h-4" /> Request Admin Approval
-            </button>
-        );
-    };
+    // "Request access" (admin approval, no payment) under every buy button.
+    const requestControl = (type: "COURSE" | "BUNDLE" | "ALL_IN_ONE", id: string, name: string, courseIds?: string[]) =>
+        isStudent ? <AccessRequestControl type={type} id={id} name={name} courseIds={courseIds} /> : null;
 
     const byId = useMemo(() => new Map((catalog?.courses ?? []).map(c => [c.id, c])), [catalog]);
     const myCourses = useMemo(
@@ -169,6 +129,11 @@ export function CourseSellingPage() {
                                 <CheckCircle2 className="w-4 h-4" aria-hidden="true" /> Continue learning
                             </Link>
                         )}
+                        {isStudent && (
+                            <Link href="/student/access-requests" className="mt-6 ml-0 sm:ml-1 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-200 hover:text-white">
+                                <KeyRound className="w-4 h-4" aria-hidden="true" /> Your access requests
+                            </Link>
+                        )}
                     </div>
                 </header>
 
@@ -209,7 +174,7 @@ export function CourseSellingPage() {
                                         <AllAccessCard
                                             price={catalog.allAccess.price}
                                             courseCount={catalog.allAccess.courseCount}
-                                            secondary={access.ready ? renderRequestControl("ALL_IN_ONE", ALL_IN_ONE_ID, "freshkite Complete Course") : null}
+                                            secondary={requestControl("ALL_IN_ONE", "ALL_IN_ONE", "Master Subscription")}
                                         />
                                     </div>
                                 )}
@@ -221,7 +186,7 @@ export function CourseSellingPage() {
                                                     bundle={b}
                                                     courses={bundleCourses(b, byId)}
                                                     onOpenBundle={bundle => show({ type: "bundle", id: bundle.id })}
-                                                    secondary={access.ready ? renderRequestControl("BUNDLE", b.id, b.name) : null}
+                                                    secondary={requestControl("BUNDLE", b.id, b.name, b.courseIds)}
                                                 />
                                             </Reveal>
                                         ))}
@@ -269,6 +234,7 @@ export function CourseSellingPage() {
                             id={open.id}
                             variant="modal"
                             onOpenBundle={id => show({ type: "bundle", id })}
+                            secondary={requestControl("COURSE", open.id, openCourseName ?? "this course")}
                         />
                     )}
                     {open?.type === "bundle" && (
@@ -277,20 +243,10 @@ export function CourseSellingPage() {
                             id={open.id}
                             variant="modal"
                             onOpenCourse={id => show({ type: "course", id })}
-                            secondary={access.ready && openBundle ? renderRequestControl("BUNDLE", openBundle.id, openBundle.name) : null}
+                            secondary={openBundle ? requestControl("BUNDLE", openBundle.id, openBundle.name, openBundle.courseIds) : null}
                         />
                     )}
                 </Modal>
-
-                {requestModal && (
-                    <RequestApprovalModal
-                        productType={requestModal.productType}
-                        productId={requestModal.productId}
-                        productName={requestModal.productName}
-                        onClose={() => setRequestModal(null)}
-                        onSubmitted={loadMyRequests}
-                    />
-                )}
             </div>
         </MotionConfig>
     );

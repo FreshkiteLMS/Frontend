@@ -80,9 +80,12 @@ export function PurchaseAction({ product, size = 'sm', label, secondary }: {
     }
     if (!(product.price > 0)) {
         return (
-            <span className={`inline-flex w-full items-center justify-center font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 ${sz}`}>
-                Not on sale yet
-            </span>
+            <div className="w-full space-y-2">
+                <span className={`inline-flex w-full items-center justify-center font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 ${sz}`}>
+                    Not on sale yet
+                </span>
+                {secondary}
+            </div>
         );
     }
 

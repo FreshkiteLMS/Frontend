@@ -100,12 +100,16 @@ export interface AccessibleCourse {
     status: string;
     via: AccessSource[];
     bundleIds: string[];
+    /** When access ends (time-limited grants); null/absent = permanent. */
+    expiresAt?: string | null;
 }
 
 /** GET /students/me/access — resolved by the same server rules that gate content. */
 export interface MyAccess {
     fullAccess: boolean;
+    fullAccessExpiresAt?: string | null;
     bundleIds: string[];
+    bundleExpiry?: Record<string, string | null>;
     courses: AccessibleCourse[];
-    grants: { productType: 'COURSE' | 'BUNDLE' | 'ALL_IN_ONE'; productId: string; source: string }[];
+    grants: { productType: 'COURSE' | 'BUNDLE' | 'ALL_IN_ONE'; productId: string; source: string; expiresAt?: string | null }[];
 }

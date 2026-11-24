@@ -21,7 +21,10 @@ const courses = vi.hoisted(() => vi.fn());
 vi.mock('@/services/api/courseGroupService', () => ({ courseGroupService: { getGroupedCourses: groups } }));
 vi.mock('@/services/api/course.api', () => ({ courseService: { getAllCourses: courses } }));
 vi.mock('@/services/api/config.api', () => ({ configService: { getPublicConfig: vi.fn().mockResolvedValue({ subscriptionPrice: 60000, totalCourseCount: 3, currency: 'INR' }) } }));
-vi.mock('@/services/api/enrollment-request.api', () => ({ enrollmentRequestService: { getMine: vi.fn().mockResolvedValue([]) } }));
+vi.mock('@/services/api/enrollment-management.api', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/services/api/enrollment-management.api')>()),
+    accessRequestApi: { mine: vi.fn().mockResolvedValue([]), create: vi.fn(), cancel: vi.fn(), get: vi.fn(), myEnrollments: vi.fn().mockResolvedValue([]) },
+}));
 
 import { CourseCard } from '../course-card';
 

@@ -90,7 +90,7 @@ export function AdminDashboard() {
         { icon: PlusCircle, label: 'New Course', description: 'Create new course', color: 'bg-green-500', href: '/admin/courses/create' },
         { icon: Users, label: 'Students', description: 'View & manage students', color: 'bg-blue-500', href: '/admin/students' },
         { icon: Layers, label: 'Batch Management', description: 'Manage batches', color: 'bg-indigo-500', href: '/admin/batches' },
-        { icon: ShieldCheck, label: 'Enrollment Requests', description: 'Review offline approvals', color: 'bg-amber-500', href: '/admin/enrollment-requests' },
+        { icon: ShieldCheck, label: 'Enrollment Management', description: 'Grant access and review requests', color: 'bg-amber-500', href: '/admin/enrollments' },
         { icon: BookOpen, label: 'Bundles', description: 'Edit bundles, courses & order', color: 'bg-rose-500', href: '/admin/bundles' },
         { icon: TicketPercent, label: 'Discounts', description: 'Coupons for courses, bundles & Master Plan', color: 'bg-violet-500', href: '/admin/discounts' },
         { icon: Mic, label: 'Attempt Requests', description: 'Audio assessment attempt limits', color: 'bg-teal-500', href: '/admin/assessment-attempts' },
@@ -166,7 +166,7 @@ export function AdminDashboard() {
                     detail={(stats?.pendingApprovals ?? 0) > 0 ? 'Review enrollment requests →' : 'Nothing waiting'}
                     highlight={(stats?.pendingApprovals ?? 0) > 0}
                     loading={loading && !stats}
-                    onClick={() => router.push('/admin/enrollment-requests')}
+                    onClick={() => router.push('/admin/enrollments?tab=requests')}
                 />
                 <MetricCard
                     icon={IndianRupee}

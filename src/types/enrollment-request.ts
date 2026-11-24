@@ -1,5 +1,5 @@
 export type ProductType = 'COURSE' | 'BUNDLE' | 'ALL_IN_ONE';
-export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 export interface EnrollmentRequest {
     id: string;
@@ -26,10 +26,5 @@ export interface EnrollmentRequest {
 export interface EnrollmentRequestList {
     rows: EnrollmentRequest[];
     meta: { page: number; limit: number; total: number; totalPages: number };
-    counts: { PENDING: number; APPROVED: number; REJECTED: number };
-}
-
-/** Stable key for matching a product to its request status on the client. */
-export function productKey(productType: ProductType, productId: string): string {
-    return `${productType}:${productId}`;
+    counts: { PENDING: number; APPROVED: number; REJECTED: number; CANCELLED?: number };
 }

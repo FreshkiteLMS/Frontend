@@ -43,7 +43,8 @@ const TYPING_SWEEP_MS = 3000;
 export const ACCESS_UPDATED_WINDOW_EVENT = 'lms:access-updated';
 
 /** Notification types that mean "your course access just changed". */
-const ACCESS_NOTIFICATION_TYPES = new Set(['request_approved', 'COURSE_ASSIGNED', 'BATCH_ADDED', 'BATCH_REMOVED']);
+// request_rejected changes no access, but refreshes the student's request list (same window event).
+const ACCESS_NOTIFICATION_TYPES = new Set(['request_approved', 'request_rejected', 'COURSE_ASSIGNED', 'BATCH_ADDED', 'BATCH_REMOVED']);
 
 interface JoinAck {
     ok: boolean;

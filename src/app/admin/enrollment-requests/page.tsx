@@ -1,13 +1,6 @@
-"use client";
+import { redirect } from 'next/navigation';
 
-import { Header } from "@/components/layout/header";
-import { EnrollmentRequests } from "@/components/admin/enrollment-requests";
-
+/** Moved: student access requests now live under Enrollment Management. */
 export default function AdminEnrollmentRequestsPage() {
-    return (
-        <>
-            <Header />
-            <EnrollmentRequests />
-        </>
-    );
+    redirect('/admin/enrollments?tab=requests');
 }

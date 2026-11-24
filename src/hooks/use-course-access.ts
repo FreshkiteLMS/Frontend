@@ -84,6 +84,8 @@ export function useCourseAccess() {
         ready: !isStudent || snap.status === 'ready' || snap.status === 'error',
         failed: isStudent && snap.status === 'error',
         fullAccess: !!data?.fullAccess,
+        /** End of a time-limited Master Subscription; null = permanent (or not held). */
+        fullAccessExpiresAt: data?.fullAccessExpiresAt ?? null,
         /** Holds at least one course (any source) or full access. */
         hasAnyAccess: !!data && (data.fullAccess || data.courses.length > 0),
         hasCourse,
