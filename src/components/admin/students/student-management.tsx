@@ -8,6 +8,7 @@ import { adminInsightsService } from '@/services/api/admin-insights.api';
 import { apiErrorMessage } from '@/services/api/structured-course.api';
 import { Breadcrumbs, DataNote, btnPrimary, btnSecondary } from '../insights/ui';
 import { StudentDirectory } from './student-directory';
+import { useStaffAccess } from '@/hooks/use-staff-access';
 
 /**
  * Student Management has two views of the same students:
@@ -34,6 +35,9 @@ export function StudentManagementNav({ active }: { active: 'students' | 'courses
 }
 
 export function StudentManagement() {
+    const access = useStaffAccess();
+    // Maintenance and enrolment are admin tools; mentors see their scoped directory only.
+    const adminTools = access.isSuperAdmin || access.fullAdmin;
     const [rebuilding, setRebuilding] = useState(false);
     const rebuild = async () => {
         setRebuilding(true);
@@ -46,19 +50,21 @@ export function StudentManagement() {
     };
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <Breadcrumbs items={[{ label: 'Dashboard', href: '/admin' }, { label: 'Students' }]} />
+            <Breadcrumbs items={[{ label: access.isMentor ? 'Mentor dashboard' : 'Dashboard', href: access.isMentor ? '/mentor' : '/admin' }, { label: 'Students' }]} />
             <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Student Management</h1>
-                    <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Find any student and open their complete learning journey.</p>
-                    <div className="mt-3"><StudentManagementNav active="students" /></div>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{access.isMentor && !adminTools ? 'My Students' : 'Student Management'}</h1>
+                    <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                        {access.isMentor && !adminTools && access.me?.studentScope !== 'all' ? 'Students in your batches. Open one to see their learning journey.' : 'Find any student and open their complete learning journey.'}
+                    </p>
+                    {adminTools && <div className="mt-3"><StudentManagementNav active="students" /></div>}
                 </div>
-                <div className="flex gap-2">
+                {adminTools && <div className="flex gap-2">
                     <button type="button" onClick={rebuild} disabled={rebuilding} className={btnSecondary} title="Recompute every student's directory figures now">
                         <RefreshCw className={`h-4 w-4 ${rebuilding ? 'animate-spin' : ''}`} aria-hidden="true" /> Refresh figures
                     </button>
                     <Link href="/admin/students/enroll" className={btnPrimary}><UserPlus className="h-4 w-4" aria-hidden="true" /> Enroll</Link>
-                </div>
+                </div>}
             </div>
             <StudentDirectory />
             <div className="mt-3">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import { useStaffAccess } from '@/hooks/use-staff-access';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, Calendar, CheckCircle2, ClipboardCheck, Flame, Layers, Mail, Phone, Trophy } from 'lucide-react';
@@ -27,7 +28,8 @@ export function Student360({ studentId }: { studentId: string }) {
     const router = useRouter();
     const pathname = usePathname();
     const sp = useSearchParams();
-    const tab = (TABS.includes(sp.get('tab') as Tab) ? sp.get('tab') : 'overview') as Tab;
+    const access = useStaffAccess();
+    const requestedTab = (TABS.includes(sp.get('tab') as Tab) ? sp.get('tab') : 'overview') as Tab;
     const batchCtx = sp.get('batch');
     const overview = useAsync(() => adminInsightsService.overview(studentId), `ov:${studentId}`);
     const o = overview.data;
@@ -46,16 +48,18 @@ export function Student360({ studentId }: { studentId: string }) {
 
     const anyMeetings = o?.batches.some(b => b.capabilities.meetings) ?? true;
     const s = o?.summary;
+    // Sections follow the viewer's permissions; the API checks them again.
     const tabs: TabDef<Tab>[] = [
         { id: 'overview', label: 'Overview' },
-        { id: 'courses', label: 'Courses', count: s?.enrolled_courses ?? null },
-        { id: 'assignments', label: 'Assignments', count: s ? s.assignments.total + s.tests.taken : null },
-        { id: 'audio', label: 'Audio practice', count: s ? s.audio.attempts + s.logic.attempts : null },
-        { id: 'problems', label: 'Problem solving', count: s ? s.problems_solved : null },
-        { id: 'aptitude', label: 'Aptitude' },
-        { id: 'meetings', label: 'Meetings' },
-        { id: 'activity', label: 'Activity' },
+        { id: 'courses', label: 'Courses', count: s?.enrolled_courses ?? null, hidden: !access.can('students.view_progress') },
+        { id: 'assignments', label: 'Assignments', count: s ? s.assignments.total + s.tests.taken : null, hidden: !access.can('assessments.view_submissions') },
+        { id: 'audio', label: 'Audio practice', count: s ? s.audio.attempts + s.logic.attempts : null, hidden: !access.can('audio.view_submissions') },
+        { id: 'problems', label: 'Problem solving', count: s ? s.problems_solved : null, hidden: !access.can('students.view_progress') },
+        { id: 'aptitude', label: 'Aptitude', hidden: !access.can('students.view_progress') },
+        { id: 'meetings', label: 'Meetings', hidden: !access.can('students.view_activity') },
+        { id: 'activity', label: 'Activity', hidden: !access.can('students.view_activity') },
     ];
+    const tab: Tab = !access.ready || tabs.some(t => t.id === requestedTab && !t.hidden) ? requestedTab : 'overview';
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -85,6 +89,7 @@ export function Student360({ studentId }: { studentId: string }) {
 }
 
 function Header({ o, onTab }: { o: StudentOverview; onTab: (t: Tab) => void }) {
+    const access = useStaffAccess();
     const { identity: id, summary: s } = o;
     const [now] = useState(() => Date.now());
     const status = !s.last_activity_at ? 'never' : now - +new Date(s.last_activity_at) <= 14 * 86_400_000 ? 'active' : 'inactive';
@@ -121,11 +126,11 @@ function Header({ o, onTab }: { o: StudentOverview; onTab: (t: Tab) => void }) {
                 </div>
             </div>
             <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-100 dark:border-gray-800 pt-4 text-sm">
-                <button type="button" onClick={() => onTab('courses')} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">View courses &amp; enrolment</button>
-                <button type="button" onClick={() => onTab('assignments')} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Assess assignments</button>
-                <Link href={`/admin/enrollments?tab=grant&student=${encodeURIComponent(id.userId)}`} className="rounded-lg border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20">Grant access</Link>
-                <Link href="/admin/batches" className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Manage batch membership</Link>
-                <Link href="/admin/assessment-attempts" className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Attempt limits</Link>
+                {access.can('students.view_progress') && <button type="button" onClick={() => onTab('courses')} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">View courses &amp; enrolment</button>}
+                {access.can('assessments.view_submissions') && <button type="button" onClick={() => onTab('assignments')} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Assess assignments</button>}
+                {(access.isSuperAdmin || access.fullAdmin || (access.can('students.manage_access') && access.me?.studentScope === 'all')) && <Link href={`/admin/enrollments?tab=grant&student=${encodeURIComponent(id.userId)}`} className="rounded-lg border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20">Grant access</Link>}
+                {access.can('batches.view') && <Link href="/admin/batches" className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Manage batch membership</Link>}
+                {(access.isSuperAdmin || access.fullAdmin) && <Link href="/admin/assessment-attempts" className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">Attempt limits</Link>}
                 {pendingCount > 0 && (
                     <a href="#pending" className="inline-flex items-center gap-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 font-medium text-amber-800 dark:text-amber-300">
                         <ClipboardCheck className="h-4 w-4" aria-hidden="true" /> {pendingCount} pending request{pendingCount === 1 ? '' : 's'}

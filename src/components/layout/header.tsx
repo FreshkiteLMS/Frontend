@@ -29,8 +29,10 @@ import {
     TicketPercent,
     Mic,
     KeyRound,
+    UserCog,
     type LucideIcon,
 } from 'lucide-react';
+import { useStaffAccess, type StaffAccess } from '@/hooks/use-staff-access';
 import { notificationService, Notification } from '@/services/api/notification.api';
 import { NotificationSidebar } from '@/components/layout/notification-sidebar';
 import { getSocket, joinUserRoom } from '@/services/socket';
@@ -49,6 +51,7 @@ const ADMIN_NAV: NavItem[] = [
     { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: '/admin/students', label: 'Students', icon: Users },
     { href: '/admin/batches', label: 'Batches', icon: Layers },
+    { href: '/admin/mentors', label: 'Mentors', icon: UserCog },
     { href: '/admin/bundles', label: 'Bundles', icon: Package },
     { href: '/admin/discounts', label: 'Discounts', icon: TicketPercent },
     { href: '/admin/assessment-attempts', label: 'Attempts', icon: Mic },
@@ -59,6 +62,7 @@ const ADMIN_NAV: NavItem[] = [
 const STUDENT_NAV: NavItem[] = [
     { href: '/student', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: '/student/courses', label: 'Courses', icon: BookOpen },
+    { href: '/student/batches', label: 'My Batches', icon: Layers },
     { href: '/student/meetings', label: 'Meetings', icon: CalendarDays },
     { href: '/student/access-requests', label: 'Access Requests', icon: KeyRound },
     { href: '/friends', label: 'Friends', icon: HeartHandshake },
@@ -66,6 +70,25 @@ const STUDENT_NAV: NavItem[] = [
 ];
 
 const GUEST_NAV: NavItem[] = [{ href: '/courses', label: 'Courses', icon: BookOpen }];
+
+/**
+ * Mentor navigation follows the mentor's live permissions. Mentor management
+ * is never shown (administrators only); Discounts only with the financial
+ * permission. The API enforces all of this regardless of what is shown.
+ */
+function mentorNav(a: StaffAccess): NavItem[] {
+    const items: NavItem[] = [{ href: '/mentor', label: 'Mentor dashboard', icon: LayoutDashboard, exact: true }];
+    if (a.fullAdmin) items.push({ href: '/admin', label: 'Admin dashboard', icon: ClipboardCheck, exact: true });
+    if (a.can('batches.view')) items.push({ href: '/admin/batches', label: 'Batches', icon: Layers });
+    if (a.can('students.view')) items.push({ href: '/admin/students', label: 'Students', icon: Users });
+    if (a.fullAdmin) items.push({ href: '/admin/bundles', label: 'Bundles', icon: Package });
+    if (a.can('finance.manage_discounts')) items.push({ href: '/admin/discounts', label: 'Discounts', icon: TicketPercent });
+    if (a.fullAdmin) items.push({ href: '/admin/assessment-attempts', label: 'Attempts', icon: Mic });
+    if (a.fullAdmin || (a.can('students.manage_access') && a.me?.studentScope === 'all')) items.push({ href: '/admin/enrollments', label: 'Enrollments', icon: KeyRound });
+    // The leaderboard API admits students, teachers and admins (Full Admin mentors run as admin).
+    if (a.fullAdmin) items.push({ href: '/leaderboard', label: 'Leaderboard', icon: Trophy });
+    return items;
+}
 
 function isActive(pathname: string, item: NavItem): boolean {
     if (item.exact) return pathname === item.href;
@@ -97,8 +120,10 @@ export function Header() {
     }, [pathname]);
 
     const displayUser = mounted ? user : null;
-    const homeHref = mounted && user?.role === 'admin' ? '/admin' : '/student';
-    const nav = displayUser?.role === 'admin' ? ADMIN_NAV : displayUser?.role === 'student' ? STUDENT_NAV : GUEST_NAV;
+    const staff = useStaffAccess();
+    const role = displayUser?.role as string | undefined;
+    const homeHref = mounted && user?.role === 'admin' ? '/admin' : mounted && (user?.role as string) === 'mentor' ? '/mentor' : '/student';
+    const nav = role === 'admin' ? ADMIN_NAV : role === 'mentor' ? mentorNav(staff) : role === 'student' ? STUDENT_NAV : GUEST_NAV;
 
     return (
         // No backdrop-filter / transform here: either would make the header the
@@ -277,7 +302,7 @@ function ProfileDropdown({ user, logout }: { user: { id?: string; name?: string;
 
     const displayInitial = user?.name ? user.name.charAt(0).toUpperCase() : '?';
     const displayName = user?.name || 'User';
-    const roleLabel = user?.role === 'admin' ? 'Administrator' : 'Student';
+    const roleLabel = user?.role === 'admin' ? 'Administrator' : user?.role === 'mentor' ? 'Mentor' : 'Student';
 
     return (
         <div className="relative" ref={ref}>

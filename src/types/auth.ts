@@ -3,7 +3,7 @@ export interface User {
     id: string;
     username: string;
     name: string;
-    role: 'admin' | 'student';
+    role: 'admin' | 'student' | 'mentor' | 'teacher';
     email: string;
     hasPurchasedCourses?: boolean;
 }

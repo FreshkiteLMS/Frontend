@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
+import { useStaffAccess } from '@/hooks/use-staff-access';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Download, Search, SlidersHorizontal, UserMinus, UserPlus, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -67,7 +68,7 @@ function readFilters(sp: URLSearchParams): DirectoryFilters {
  * both entry points show the same figures and open the same Student 360 page.
  * Filters live in the URL so a view can be shared or reloaded.
  */
-export function StudentDirectory({ scope, onMembershipChanged }: { scope?: { batchId: string; batchName: string }; onMembershipChanged?: () => void }) {
+export function StudentDirectory({ scope, onMembershipChanged, canManageMembership = true }: { scope?: { batchId: string; batchName: string }; onMembershipChanged?: () => void; canManageMembership?: boolean }) {
     const router = useRouter();
     const pathname = usePathname();
     const sp = useSearchParams();
@@ -104,6 +105,7 @@ export function StudentDirectory({ scope, onMembershipChanged }: { scope?: { bat
     );
     useEffect(() => { setSelected(new Set()); }, [key]);
 
+    const staff = useStaffAccess();
     const batches = useAsync(() => batchService.getAll(1, 100).then(r => r.data), 'batches');
     const courses = useAsync(() => courseService.getAllCourses({}), 'courses');
 
@@ -168,7 +170,7 @@ export function StudentDirectory({ scope, onMembershipChanged }: { scope?: { bat
                     <button type="button" onClick={exportCsv} className={btnSecondary} title="Download the filtered list as CSV">
                         <Download className="h-4 w-4" aria-hidden="true" /> Export
                     </button>
-                    {scope && (
+                    {scope && canManageMembership && (
                         <button type="button" onClick={() => setAddOpen(true)} className={btnPrimary}>
                             <UserPlus className="h-4 w-4" aria-hidden="true" /> Add students
                         </button>
@@ -237,8 +239,8 @@ export function StudentDirectory({ scope, onMembershipChanged }: { scope?: { bat
             {selected.size > 0 && (
                 <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 px-4 py-2.5 text-sm">
                     <span className="font-medium text-blue-900 dark:text-blue-200">{selected.size} selected</span>
-                    <button type="button" onClick={() => setAssignOpen(true)} className={btnSecondary}><UserPlus className="h-4 w-4" aria-hidden="true" /> Add to a batch</button>
-                    {scope && <button type="button" onClick={() => setConfirmRemove(true)} className={`${btnSecondary} text-red-600 dark:text-red-400`}><UserMinus className="h-4 w-4" aria-hidden="true" /> Remove from this batch</button>}
+                    {canManageMembership && staff.can('batches.manage_students') && <button type="button" onClick={() => setAssignOpen(true)} className={btnSecondary}><UserPlus className="h-4 w-4" aria-hidden="true" /> Add to a batch</button>}
+                    {scope && canManageMembership && <button type="button" onClick={() => setConfirmRemove(true)} className={`${btnSecondary} text-red-600 dark:text-red-400`}><UserMinus className="h-4 w-4" aria-hidden="true" /> Remove from this batch</button>}
                     <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-blue-700 dark:text-blue-300 hover:underline">Clear selection</button>
                 </div>
             )}

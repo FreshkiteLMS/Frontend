@@ -128,7 +128,7 @@ export interface TabDef<T extends string> { id: T; label: string; count?: number
 export function TabBar<T extends string>({ tabs, active, onChange, label }: { tabs: TabDef<T>[]; active: T; onChange: (t: T) => void; label: string }) {
     const shown = tabs.filter(t => !t.hidden);
     return (
-        <div role="tablist" aria-label={label} className="-mx-4 sm:mx-0 mb-6 flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800 px-4 sm:px-0">
+        <div role="tablist" aria-label={label} className="-mx-4 sm:mx-0 mb-6 flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800 px-4 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {shown.map(t => (
                 <button
                     key={t.id}

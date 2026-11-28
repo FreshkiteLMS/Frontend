@@ -229,7 +229,8 @@ export interface MeetingsResponse {
 }
 
 export interface BatchOverview {
-    batch: { id: string; name: string; description: string; batchNumber: string; status: string; batchType: string | null; startDate: string; endDate: string | null; createdAt: string; legacyConfig: { capabilities: boolean; groups: boolean } };
+    batch: { id: string; name: string; description: string; batchNumber: string; status: string; batchType: string | null; startDate: string; endDate: string | null; createdAt: string; legacyConfig: { capabilities: boolean; groups: boolean };
+        lifecycle?: 'upcoming' | 'active' | 'completed' | 'archived'; joinMode?: 'direct' | 'approval'; maxStudents?: number | null; archivedAccess?: 'keep' | 'revoke' };
     capabilities: Capabilities;
     groups: BatchGroup[];
     courses: { id: string; title: string; template: string; status: string; thumbnailUrl: string | null }[];
@@ -301,6 +302,8 @@ export interface BatchListRow {
     courses: number; courseTitles: string[]; progress: number; completedAll: number; completionRate: number;
     meetingsScheduled: number; recurringMeetings: number; startDate?: string; endDate?: string; createdAt?: string; updatedAt?: string;
     status: string; batchType: string | null; capabilities: Capabilities; groupCount: number;
+    lifecycle?: 'upcoming' | 'active' | 'completed' | 'archived'; maxStudents?: number | null; joinMode?: 'direct' | 'approval';
+    mentors?: { id: string; name: string; status: string }[];
 }
 export interface CourseListRow {
     id: string; title: string; description?: string; template: string; thumbnailUrl: string | null; enrolled: number; avgProgress: number;

@@ -15,6 +15,8 @@ vi.mock('@/services/api/admin-insights.api', () => ({
 }));
 vi.mock('@/services/api/batch.api', () => ({ batchService: { getAll: vi.fn().mockResolvedValue({ data: [{ id: 'b1', name: 'Cohort A' }] }), assignStudents: vi.fn(), removeStudent: vi.fn() } }));
 vi.mock('@/services/api/course.api', () => ({ courseService: { getAllCourses: vi.fn().mockResolvedValue([{ id: 'c1', title: 'Web' }]) } }));
+// Rendered as an administrator (the directory hides membership actions from mentors without the permission).
+vi.mock('@/hooks/use-staff-access', () => ({ useStaffAccess: () => ({ ready: true, isSuperAdmin: true, isMentor: false, fullAdmin: false, me: null, can: () => true }) }));
 vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 vi.mock('next/navigation', () => ({
     useRouter: () => ({ push: nav.push, replace: nav.replace }),

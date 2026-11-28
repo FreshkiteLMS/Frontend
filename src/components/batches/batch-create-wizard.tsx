@@ -31,7 +31,8 @@ export function BatchCreateWizard() {
     const [batchType, setBatchType] = useState('');
     const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
     const [endDate, setEndDate] = useState('');
-    const [status, setStatus] = useState<'active' | 'archived'>('active');
+    const [joinMode, setJoinMode] = useState<'direct' | 'approval'>('direct');
+    const [maxStudents, setMaxStudents] = useState('');
     const [caps, setCaps] = useState<Capabilities>(DEFAULT_CAPS);
     const [groups, setGroups] = useState<BatchGroup[]>([templateGroup('general')]);
     const [courseIds, setCourseIds] = useState<string[]>([]);
@@ -61,9 +62,10 @@ export function BatchCreateWizard() {
         if (!name.trim()) e.push('Enter a batch name.');
         if (!startDate) e.push('Choose a start date.');
         if (endDate && startDate && endDate < startDate) e.push('The end date is before the start date.');
+        if (maxStudents && (!Number.isInteger(Number(maxStudents)) || Number(maxStudents) < 1)) e.push('Maximum students must be a whole number of at least 1.');
         if (groups.some(g => !g.name.trim())) e.push('Every group needs a name.');
         return e;
-    }, [name, startDate, endDate, groups]);
+    }, [name, startDate, endDate, groups, maxStudents]);
     const stepValid = step !== 0 || (name.trim() && startDate && !(endDate && endDate < startDate));
 
     const submit = async () => {
@@ -77,14 +79,15 @@ export function BatchCreateWizard() {
                 batch_type: batchType.trim() || null,
                 start_date: startDate,
                 end_date: endDate || undefined,
-                status,
+                join_mode: joinMode,
+                max_students: maxStudents ? Number(maxStudents) : null,
                 capabilities: caps,
                 communication_groups: groups.map(({ key, template, name, description, audience, who_can_post }) => ({ key, template, name, description, audience, who_can_post })),
                 course_ids: caps.courses ? courseIds : [],
                 student_ids: Array.from(students.values()).map(s => s.id),
             });
-            toast.success(`Batch “${batch.name}” created`);
-            router.push(`/admin/batches/${batch.id}`);
+            toast.success(`Batch “${batch.name}” created — create its invitation link next`);
+            router.push(`/admin/batches/${batch.id}?tab=joining`);
         } catch (err) {
             toast.error(apiErrorMessage(err, 'The batch could not be created. You can safely try again.'));
         } finally {
@@ -92,7 +95,8 @@ export function BatchCreateWizard() {
         }
     };
 
-    const courseList = (courses.data ?? []).filter(c => c.id && (!courseQ || c.title.toLowerCase().includes(courseQ.toLowerCase())));
+    // Only active (published) courses can be assigned to a batch.
+    const courseList = (courses.data ?? []).filter(c => c.id && c.status === 'active' && (!courseQ || c.title.toLowerCase().includes(courseQ.toLowerCase())));
     const courseTitle = (id: string) => (courses.data ?? []).find(c => c.id === id)?.title ?? id;
 
     return (
@@ -125,11 +129,14 @@ export function BatchCreateWizard() {
                             <input className={`${inputCls} mt-1 w-full`} value={batchType} maxLength={60} onChange={e => setBatchType(e.target.value)} list="batch-types" placeholder="Any label you like" />
                             <datalist id="batch-types">{TYPE_SUGGESTIONS.map(t => <option key={t} value={t} />)}</datalist>
                         </label>
-                        <label className="text-sm text-gray-700 dark:text-gray-300">Status
-                            <select className={`${inputCls} mt-1 w-full`} value={status} onChange={e => setStatus(e.target.value as 'active' | 'archived')}>
-                                <option value="active">Active</option>
-                                <option value="archived">Archived</option>
+                        <label className="text-sm text-gray-700 dark:text-gray-300">Joining with the invitation link
+                            <select className={`${inputCls} mt-1 w-full`} value={joinMode} onChange={e => setJoinMode(e.target.value as 'direct' | 'approval')}>
+                                <option value="direct">Join directly</option>
+                                <option value="approval">Admin approval</option>
                             </select>
+                        </label>
+                        <label className="text-sm text-gray-700 dark:text-gray-300">Maximum students (optional)
+                            <input type="number" min={1} max={100000} className={`${inputCls} mt-1 w-full`} value={maxStudents} placeholder="No limit" onChange={e => setMaxStudents(e.target.value)} />
                         </label>
                         <label className="text-sm text-gray-700 dark:text-gray-300">Start date *
                             <input type="date" className={`${inputCls} mt-1 w-full`} value={startDate} onChange={e => setStartDate(e.target.value)} />
@@ -168,7 +175,6 @@ export function BatchCreateWizard() {
                                         <label key={c.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40">
                                             <input type="checkbox" className="h-4 w-4 rounded border-gray-300" checked={courseIds.includes(c.id!)} onChange={() => setCourseIds(ids => ids.includes(c.id!) ? ids.filter(x => x !== c.id) : [...ids, c.id!])} />
                                             <span className="flex-1 text-gray-800 dark:text-gray-200">{c.title}</span>
-                                            {c.status !== 'active' && <span className="text-xs text-gray-400">{c.status}</span>}
                                         </label>
                                     ))}
                                 </div>
@@ -201,7 +207,8 @@ export function BatchCreateWizard() {
                     <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-[180px_1fr]">
                         <dt className="text-gray-500">Name</dt><dd className="font-medium text-gray-900 dark:text-white">{name || '—'}</dd>
                         <dt className="text-gray-500">Type</dt><dd>{batchType || '—'}</dd>
-                        <dt className="text-gray-500">Dates</dt><dd>{startDate || '—'}{endDate ? ` → ${endDate}` : ' (no end date)'} · {status}</dd>
+                        <dt className="text-gray-500">Dates</dt><dd>{startDate || '—'}{endDate ? ` → ${endDate}` : ' (no end date)'}</dd>
+                        <dt className="text-gray-500">Joining</dt><dd>{joinMode === 'approval' ? 'Students ask to join; staff approve' : 'Students join directly with the link'}{maxStudents ? ` · at most ${maxStudents} students` : ' · no seat limit'}</dd>
                         {description && <><dt className="text-gray-500">Description</dt><dd className="whitespace-pre-wrap">{description}</dd></>}
                         <dt className="text-gray-500">Capabilities</dt>
                         <dd className="flex flex-wrap gap-1.5">{CAPABILITY_INFO.map(c => <span key={c.key} className={`rounded-full px-2 py-0.5 text-xs ${caps[c.key] ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-gray-100 text-gray-500 line-through dark:bg-gray-800'}`}>{c.label}</span>)}</dd>

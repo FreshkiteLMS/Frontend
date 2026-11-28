@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from 'react';
-import { BatchManagement } from '@/components/batches/batch-management';
+import { BatchesHub } from '@/components/batches/batches-hub';
 import { Header } from '@/components/layout/header';
 
 export default function BatchesPage() {
@@ -9,7 +9,7 @@ export default function BatchesPage() {
         <>
             <Header />
             <Suspense fallback={<div className="text-center py-12 text-gray-500">Loading...</div>}>
-                <BatchManagement />
+                <BatchesHub />
             </Suspense>
         </>
     );

@@ -40,6 +40,8 @@ export function LoginForm() {
                     window.location.href = next;
                 } else if (result.user?.role === 'admin') {
                     window.location.href = '/admin';
+                } else if (result.user?.role === 'mentor') {
+                    window.location.href = '/mentor';
                 } else {
                     const redirectPath = result.user?.hasPurchasedCourses ? '/student' : '/student/courses';
                     setTimeout(() => { window.location.href = redirectPath; }, 100);
@@ -65,6 +67,8 @@ export function LoginForm() {
                     window.location.href = next;
                 } else if (result.user?.role === 'admin') {
                     window.location.href = '/admin';
+                } else if (result.user?.role === 'mentor') {
+                    window.location.href = '/mentor';
                 } else {
                     const redirectPath = result.user?.hasPurchasedCourses ? '/student' : '/student/courses';
                     setTimeout(() => { window.location.href = redirectPath; }, 100);
